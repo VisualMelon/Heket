@@ -1,0 +1,49 @@
+// booooring
+
+anim board_idle
+model board
+
+flow 0
+
+motion a
+noupdate
+duration 10000
+end motion
+
+end flow
+
+end anim
+
+
+anim clouds_idle
+model board
+
+flow 0
+
+motion a
+noupdate
+duration 10000
+end motion
+
+end flow
+
+end anim
+
+
+// pieces
+
+
+// anubis
+anim anubis_idle
+model anubis
+
+flow 0
+
+motion a
+noupdate
+duration 10000
+end motion
+
+end flow
+
+end anim
