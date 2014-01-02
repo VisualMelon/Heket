@@ -30,12 +30,93 @@ end flow
 end anim
 
 
+anim cell_idle
+model cell
+
+flow 0
+
+motion a
+noupdate
+duration 10000
+end motion
+
+end flow
+
+end anim
+
+
 // pieces
 
 
 // anubis
 anim anubis_idle
 model anubis
+
+flow 0
+
+motion a
+noupdate
+duration 10000
+end motion
+
+end flow
+
+end anim
+
+
+// scarab
+anim scarab_idle
+model scarab
+
+flow 0
+
+motion a
+noupdate
+duration 10000
+end motion
+
+end flow
+
+end anim
+
+
+// sphinx
+anim sphinx_idle
+model sphinx
+
+flow 0
+
+motion a
+noupdate
+duration 10000
+end motion
+
+end flow
+
+end anim
+
+
+
+// pharoh
+anim pharoh_idle
+model pharoh
+
+flow 0
+
+motion a
+noupdate
+duration 10000
+end motion
+
+end flow
+
+end anim
+
+
+
+// pyramid
+anim pyramid_idle
+model pyramid
 
 flow 0
 

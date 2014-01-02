@@ -4801,12 +4801,14 @@ public:
 	}
 };
 
+DWORD g_PC_cell = 0;
 DWORD g_PC_sphinx = 1;
 DWORD g_PC_pyramid = 2;
 DWORD g_PC_anubis = 3;
 DWORD g_PC_scarab = 4;
 DWORD g_PC_pharoh = 5;
 
+DWORD g_TM_none = 0;
 DWORD g_TM_red = 1;
 DWORD g_TM_silver = 2;
 
@@ -4845,14 +4847,25 @@ public:
 			modelN->sections[0]->colMod = g_CL_silver;
 	}
 
+	void kill()
+	{
+		alive = false;
+		updateOffsetRot();
+		update(true);
+
+		x = -1;
+		y = -1;
+	}
+
 	void updateOffsetRot()
 	{
-		offset = D3DXVECTOR3(x * 2.2 - 9.9, 0, y * 2.2 - 7.7);
+		// don't mess with y
+		offset = D3DXVECTOR3(x * 2.2 - 9.9, offset.y, y * 2.2 - 7.7);
 		rotation = D3DXVECTOR3(0, (dir - 1) * D3DX_PI * 0.5, 0);
 
 		if (!alive)
-		{
-			offset.y -= 20;
+		{ // we can mess with it here
+			offset.y = -20;
 		}
 	}
 };
@@ -8640,7 +8653,7 @@ std::vector<UNCRZ_sprite_data> smokeSprites;
 
 UNCRZ_obj* mapObj; // map, for detailed collision
 UNCRZ_obj* cloudObj; // clouds
-std::vector<UNCRZ_obj*> objs; // game objects (not rendered)
+std::vector<g_piece*> objs; // game objects (not rendered)
 std::vector<UNCRZ_obj*> zSortedObjs; // for anything that needs to be drawn back-to-front
 std::vector<int> zsoLocalIndexes;
 
@@ -8740,6 +8753,7 @@ void handleUi(uiItem*, DWORD);
 void handleUi(uiItem*, DWORD, DWORD*, int);
 void handleKeys();
 void reload(LPDIRECT3DDEVICE9);
+void g_endGo();
 void moveCamera(LPDIRECT3DDEVICE9);
 void moveCameraView(LPDIRECT3DDEVICE9, UNCRZ_view*);
 void moveCamerawaterReflect(LPDIRECT3DDEVICE9);
@@ -8763,6 +8777,8 @@ int windowSizeY = 600;
 D3DXVECTOR3 camPos(0.0f, 40.0f, 0.0f);
 float rotY = 0;
 float rotPar = 0.0f;
+float targRotY = 0;
+float targRotPar = 0.0f;
 float moveVel = 0.4f;
 float focalDist = 10.0f;
 
@@ -8912,7 +8928,9 @@ std::vector<dynamicDecalData*> dynamicDecals;
 
 bool g_pause = false;
 bool g_ticks = 0;
+int g_seled = -1;
 bool initialised = false;
+DWORD g_go = g_TM_red;
 
 //
 // end game stuff
@@ -9004,6 +9022,7 @@ int WINAPI WinMain(HINSTANCE hInstance,
 	initOther();
 
 	reload(mainDxDevice);
+	g_endGo();
 
 	initialised = true; // this is rather important
 
@@ -9018,7 +9037,29 @@ int WINAPI WinMain(HINSTANCE hInstance,
 	return (int) msg.wParam;
 }
 
-int getTapedObj(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, float* distRes, bool checkSepor = false)
+DWORD getCellTeam(int x, int y)
+{
+	for (int i = objs.size() - 1; i >= 0; i--)
+	{
+		if (objs[i]->type == g_PC_cell && objs[i]->x == x && objs[i]->y == y)
+			return objs[i]->team;
+	}
+
+	return g_TM_none;
+}
+
+int getOccupier(int x, int y)
+{
+	for (int i = objs.size() - 1; i >= 0; i--)
+	{
+		if (objs[i]->type != g_PC_cell && objs[i]->x == x && objs[i]->y == y)
+			return i;
+	}
+
+	return -1;
+}
+
+int getTapedObj(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, float* distRes)
 {
 	int best = -1;
 	float bestDist;
@@ -9037,10 +9078,23 @@ int getTapedObj(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, float* distRes, bool c
 	}
 
 	*distRes = localDistRes;
-	if (best != -1 || checkSepor == false)
-		return best;
 
-	return -1;
+	return best;
+}
+
+bool getTapedPos(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, int* x, int* y)
+{
+	float bestDist;
+	int best = getTapedObj(rayPos, rayDir, &bestDist);
+
+	if (best != -1)
+	{
+		*x = objs[best]->x;
+		*y = objs[best]->y;
+		return true;
+	}
+
+	return false;
 }
 
 uiItem* getTapedUiItem(float x, float y, float* xOut, float* yOut)
@@ -9052,6 +9106,126 @@ uiItem* getTapedUiItem(float x, float y, float* xOut, float* yOut)
 			return taped;
 	}
 	return NULL;
+}
+
+void performLaser(int x, int y, DWORD dir)
+{
+restart:
+	int dx, dy;
+	if (dir == g_DR_up)
+	{
+		dx = 0;
+		dy = 1;
+	}
+	else if (dir == g_DR_right)
+	{
+		dx = 1;
+		dy = 0;
+	}
+	else if (dir == g_DR_down)
+	{
+		dx = 0;
+		dy = -1;
+	}
+	else if (dir == g_DR_left)
+	{
+		dx = -1;
+		dy = 0;
+	}
+
+	while (true)
+	{
+		x += dx;
+		y += dy;
+
+		if (x < 0 || x > 9 || y < 0 || y > 7)
+			return; // off edge
+
+		int hit = getOccupier(x, y);
+		if (hit != -1)
+		{
+			g_piece* piece = objs[hit];
+
+			if (piece->type == g_PC_pharoh)
+			{
+				piece->kill();
+				return;
+			}
+			else if (piece->type == g_PC_sphinx)
+			{
+				return;
+			}
+			else if (piece->type == g_PC_pyramid)
+			{
+				if ((piece->dir + 2) % 4 == dir)
+				{
+					dir = (dir - 1) % 4;
+					goto restart;
+				}
+				else if ((piece->dir + 3) % 4 == dir)
+				{
+					dir = (dir + 1) % 4;
+					goto restart;
+				}
+				piece->kill();
+				return;
+			}
+			else if (piece->type == g_PC_scarab)
+			{
+				if ((piece->dir + 2) % 4 == dir)
+				{
+					dir = (dir - 1) % 4;
+					goto restart;
+				}
+				else if ((piece->dir + 3) % 4 == dir)
+				{
+					dir = (dir + 1) % 4;
+					goto restart;
+				}
+				else if ((piece->dir + 0) % 4 == dir)
+				{
+					dir = (dir - 1) % 4;
+					goto restart;
+				}
+				else if ((piece->dir + 1) % 4 == dir)
+				{
+					dir = (dir + 1) % 4;
+					goto restart;
+				}
+			}
+			else if (piece->type == g_PC_anubis)
+			{
+				if ((piece->dir + 2) % 4 == dir)
+				{
+					return; // anubis protected from front
+				}
+				piece->kill();
+				return;
+			}
+		}
+	}
+}
+
+void g_endGo()
+{
+	if (g_go == g_TM_red)
+	{
+		g_go = g_TM_silver;
+		targRotPar = D3DX_PI * -0.5 * (2.0 / 3.0);
+		targRotY = D3DX_PI * 0.5;
+
+		// laser time
+		performLaser(9, 0, objs[getOccupier(9, 0)]->dir);
+	}
+	else if (g_go == g_TM_silver)
+	{
+		g_go = g_TM_red;
+		targRotPar = D3DX_PI * -0.5 * (2.0 / 3.0);
+		targRotY = D3DX_PI * -0.5;
+
+		// laser time
+		performLaser(0, 7, objs[getOccupier(0, 7)]->dir);
+	}
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -9108,7 +9282,93 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_KEYDOWN:
 		keyDown[wParam] = true;
-		if (wParam == 64 + 6) // f
+		if (wParam == 64 + 17) // q
+		{
+			if (g_seled != -1)
+			{
+				g_piece* turner = objs[g_seled];
+				if (turner->type == g_PC_sphinx)
+				{
+					if (turner->team == g_TM_red && turner->dir == g_DR_up)
+					{
+						turner->dir = g_DR_left;
+
+						turner->updateOffsetRot();
+						turner->offset.y = 0;
+						turner->update(true);
+						g_seled = -1;
+
+						g_endGo();
+					}
+					if (turner->team == g_TM_silver && turner->dir == g_DR_down)
+					{
+						turner->dir = g_DR_right;
+
+						turner->updateOffsetRot();
+						turner->offset.y = 0;
+						turner->update(true);
+						g_seled = -1;
+
+						g_endGo();
+					}
+				}
+				else
+				{
+					turner->dir = (turner->dir - 1) % 4;
+
+					turner->updateOffsetRot();
+					turner->offset.y = 0;
+					turner->update(true);
+					g_seled = -1;
+
+					g_endGo();
+				}
+			}
+		}
+		else if (wParam == 64 + 5) // e
+		{
+			if (g_seled != -1)
+			{
+				g_piece* turner = objs[g_seled];
+				if (turner->type == g_PC_sphinx)
+				{
+					if (turner->team == g_TM_red && turner->dir == g_DR_left)
+					{
+						turner->dir = g_DR_up;
+
+						turner->updateOffsetRot();
+						turner->offset.y = 0;
+						turner->update(true);
+						g_seled = -1;
+
+						g_endGo();
+					}
+					if (turner->team == g_TM_silver && turner->dir == g_DR_right)
+					{
+						turner->dir = g_DR_down;
+
+						turner->updateOffsetRot();
+						turner->offset.y = 0;
+						turner->update(true);
+						g_seled = -1;
+
+						g_endGo();
+					}
+				}
+				else
+				{
+					turner->dir = (turner->dir + 1) % 4;
+
+					turner->updateOffsetRot();
+					turner->offset.y = 0;
+					turner->update(true);
+					g_seled = -1;
+
+					g_endGo();
+				}
+			}
+		}
+		else if (wParam == 64 + 6) // f
 		{
 			wireFrame = !wireFrame;
 		}
@@ -9216,6 +9476,13 @@ float getDistNoSqrt(float x0, float y0, float z0, float x1, float y1, float z1)
 	return x * x + y * y + z * z;
 }
 
+int iabs(int num)
+{
+	if (num < 0)
+		return -num;
+	return num;
+}
+
 void prepBMap(std::ifstream* file, int* width, int* height)
 {
 	for (int i = 0; i < 10; i++)
@@ -9264,6 +9531,7 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 	D3DXVECTOR3 nearVec, farVec, screenVec, rayPos, rayDir;
 	float distRes = 0.0f;
 	float rayDirMod;
+	int taped;
 	D3DXVECTOR3 simpleDir;
 	D3DXVECTOR3 simpleLoc;
 
@@ -9295,9 +9563,90 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 			rayDir.x /= rayDirMod;
 			rayDir.y /= rayDirMod;
 			rayDir.z /= rayDirMod;
+
+			taped = getTapedObj(&rayPos, &rayDir, &distRes);
+			if (g_seled != -1)
+			{
+				objs[g_seled]->offset.y = 0;
+				objs[g_seled]->update(true);
+				g_seled = -1;
+			}
+			if (taped != -1)
+			{
+				if (objs[taped]->type != g_PC_cell && objs[taped]->team == g_go)
+				{
+					g_seled = taped;
+					objs[g_seled]->offset.y = 1;
+					objs[g_seled]->update(true);
+				}
+			}
 		}
 		break;
 	case UIA_rightclick:
+		if (uii->name == "mainover" && datalen == 2)
+		{
+			//mainDxDevice->GetViewport(&vp);
+			vp = createViewPort(1);
+			GetClientRect(mainHWnd, &crect);
+			vp = createViewPort(crect.right - crect.left, crect.bottom - crect.top);
+
+			screenVec.x = data[0];
+			screenVec.y = data[1];
+
+			screenVec.z = 0.1f;
+
+			D3DXMatrixIdentity(&mehMatrix);
+
+			D3DXVec3Unproject(&nearVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
+
+			screenVec.z = 1.0f;
+			D3DXVec3Unproject(&farVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
+
+			rayPos = nearVec;
+			rayDir = farVec - nearVec;
+			rayDirMod = sqrt(rayDir.x * rayDir.x + rayDir.y * rayDir.y + rayDir.z * rayDir.z);
+			rayDir.x /= rayDirMod;
+			rayDir.y /= rayDirMod;
+			rayDir.z /= rayDirMod;
+
+			if (g_seled != -1)
+			{
+				int x, y;
+				if (getTapedPos(&rayPos, &rayDir, &x, &y))
+				{
+					g_piece* mover = objs[g_seled];
+					if (x == mover->x && y == mover->y)
+						goto noGo;
+					if (iabs(x - mover->x) > 1 || iabs(y - mover->y) > 1)
+						goto noGo;
+					if (mover->type != g_PC_scarab && getOccupier(x, y) != -1)
+						goto noGo;
+					if (getCellTeam(x, y) != g_TM_none && getCellTeam(x, y) != mover->team)
+						goto noGo;
+
+					if (mover->type == g_PC_scarab && getOccupier(x, y) != -1)
+					{
+						g_piece* moved = objs[getOccupier(x, y)];
+						moved->x = mover->x;
+						moved->y = mover->y;
+						moved->updateOffsetRot();
+						moved->update(true);
+					}
+
+					mover->x = x;
+					mover->y = y;
+
+					mover->updateOffsetRot();
+					mover->offset.y = 0;
+					mover->update(true);
+					g_seled = -1;
+
+					g_endGo();
+noGo:
+					break;
+				}
+			}
+		}
 		break;
 	}
 }
@@ -9316,18 +9665,22 @@ void handleKeys()
 	if (keyDown[VK_UP])
 	{
 		rotPar -= 0.1f;
+		targRotPar -= 0.1f;
 	}
 	if (keyDown[VK_DOWN])
 	{
 		rotPar += 0.1f;
+		targRotPar += 0.1f;
 	}
 	if (keyDown[VK_RIGHT])
 	{
 		rotY -= 0.1f;
+		targRotY -= 0.1f;
 	}
 	if (keyDown[VK_LEFT])
 	{
 		rotY += 0.1f;
+		targRotY += 0.1f;
 	}
 	if (keyDown[VK_SPACE])
 	{
@@ -9335,7 +9688,7 @@ void handleKeys()
 		//D3DXSaveTextureToFile("mehRefract.bmp", D3DXIFF_BMP, waterRefractTex, NULL);
 		//D3DXSaveTextureToFile("mehUnder.bmp", D3DXIFF_BMP, underTex, NULL);
 		//D3DXSaveTextureToFile("mehLight.bmp", D3DXIFF_BMP, lights[2]->lightTex, NULL);
-		D3DXSaveTextureToFile("mehSun.bmp", D3DXIFF_BMP, lights[0]->lightTex, NULL);
+		//D3DXSaveTextureToFile("mehSun.bmp", D3DXIFF_BMP, lights[0]->lightTex, NULL);
 		D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
 		D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
 		D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
@@ -9344,18 +9697,22 @@ void handleKeys()
 	if (keyDown[64 + 23]) // w
 	{ // FORWARD
 		rotPar -= 0.1f;
+		targRotPar -= 0.1f;
 	}
 	if (keyDown[64 + 1]) // a
 	{ // LEFT
 		rotY += 0.1f;
+		targRotY += 0.1f;
 	}
 	if (keyDown[64 + 19]) // s
 	{ // BACKWARD
 		rotPar += 0.1f;
+		targRotPar += 0.1f;
 	}
 	if (keyDown[64 + 4]) // d
 	{ // RIGHT
 		rotY -= 0.1f;
+		targRotY -= 0.1f;
 	}
 }
 
@@ -9414,6 +9771,50 @@ void eval()
 
 	// views
 	
+	// rotY
+	while (rotY > targRotY + D3DX_PI)
+	{
+		rotY -= D3DX_PI * 2;
+	}
+	while (rotY < targRotY - D3DX_PI)
+	{
+		rotY += D3DX_PI * 2;
+	}
+	if (rotY > targRotY)
+	{
+		rotY -= 0.05f;
+		if (rotY < targRotY)
+			rotY = targRotY;
+	}
+	if (rotY < targRotY)
+	{
+		rotY += 0.05f;
+		if (rotY > targRotY)
+			rotY = targRotY;
+	}
+
+	// rotPar
+	while (rotPar > targRotPar + D3DX_PI)
+	{
+		rotPar -= D3DX_PI * 2;
+	}
+	while (rotPar < targRotPar - D3DX_PI)
+	{
+		rotPar += D3DX_PI * 2;
+	}
+	if (rotPar > targRotPar)
+	{
+		rotPar -= 0.05f;
+		if (rotPar < targRotPar)
+			rotPar = targRotPar;
+	}
+	if (rotPar < targRotPar)
+	{
+		rotPar += 0.05f;
+		if (rotPar > targRotPar)
+			rotPar = targRotPar;
+	}
+
 	RECT crect;
 	GetClientRect(mainHWnd, &crect);
 	int winWidth = crect.right - crect.left;
@@ -10055,7 +10456,7 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 
 	mapObj = new UNCRZ_obj(getModel(&models, "board"));
 	mapObj->changeAnim(mapAnim);
-	mapObj->offset.y = 1; // somehow it's all off by one!
+	mapObj->offset.y = 1; // some idiot got EVERY PIECE MODEL wrong... (see undscs)
 	mapObj->rotation.y = D3DX_PI * -0.5; // some idiot got the model wrong!
 	cloudObj = new UNCRZ_obj(getModel(&models, "clouds"));
 	cloudObj->changeAnim(cloudAnim);
@@ -10067,8 +10468,25 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	UNCRZ_model* anubisModel = getModel(&models, "anubis");
 	anubisModel->changeAnim(anubisIdle);
 
+	UNCRZ_FBF_anim* scarabIdle = getFBF_anim(&anims, "scarab_idle");
+	UNCRZ_model* scarabModel = getModel(&models, "scarab");
+	scarabModel->changeAnim(scarabIdle);
+
+	UNCRZ_FBF_anim* sphinxIdle = getFBF_anim(&anims, "sphinx_idle");
+	UNCRZ_model* sphinxModel = getModel(&models, "sphinx");
+	sphinxModel->changeAnim(sphinxIdle);
+
+	UNCRZ_FBF_anim* pharohIdle = getFBF_anim(&anims, "pharoh_idle");
+	UNCRZ_model* pharohModel = getModel(&models, "pharoh");
+	pharohModel->changeAnim(pharohIdle);
+
+	UNCRZ_FBF_anim* pyramidIdle = getFBF_anim(&anims, "pyramid_idle");
+	UNCRZ_model* pyramidModel = getModel(&models, "pyramid");
+	pyramidModel->changeAnim(pyramidIdle);
+
 	g_piece* temp;
 
+	// anubis
 	temp = new g_piece(new UNCRZ_model(anubisModel), g_PC_anubis, g_TM_red, g_DR_up, 3, 0);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
@@ -10092,6 +10510,168 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	objs.push_back(temp);
 	temp->updateOffsetRot();
 	temp->update(true);
+
+	// scarab
+	temp = new g_piece(new UNCRZ_model(scarabModel), g_PC_scarab, g_TM_red, g_DR_up, 4, 3);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(scarabModel), g_PC_scarab, g_TM_red, g_DR_left, 5, 3);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(scarabModel), g_PC_scarab, g_TM_silver, g_DR_right, 4, 4);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(scarabModel), g_PC_scarab, g_TM_silver, g_DR_down, 5, 4);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+
+	// sphinx
+	temp = new g_piece(new UNCRZ_model(sphinxModel), g_PC_sphinx, g_TM_red, g_DR_up, 9, 0);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(sphinxModel), g_PC_sphinx, g_TM_silver, g_DR_down, 0, 7);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+
+	// pharoh
+	temp = new g_piece(new UNCRZ_model(pharohModel), g_PC_pharoh, g_TM_red, g_DR_up, 4, 0);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pharohModel), g_PC_pharoh, g_TM_silver, g_DR_down, 5, 7);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+
+	// pyramid
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_left, 2, 0);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_right, 7, 7);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_left, 2, 3);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_right, 7, 4);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_down, 2, 4);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_up, 7, 3);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_down, 9, 3);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_up, 0, 4);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_left, 9, 4);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_right, 0, 3);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_left, 3, 5);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_right, 6, 2);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_up, 7, 1);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+	
+	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_down, 2, 6);
+	zSortedObjs.push_back(temp);
+	objs.push_back(temp);
+	temp->updateOffsetRot();
+	temp->update(true);
+
+	UNCRZ_FBF_anim* cellIdle = getFBF_anim(&anims, "cell_idle");
+	UNCRZ_model* cellModel = getModel(&models, "cell");
+	cellModel->changeAnim(cellIdle);
+
+	// cells
+	for (int i = 0; i < 10; i++)
+	{
+		for (int j = 0; j < 8; j++)
+		{
+			temp = new g_piece(new UNCRZ_model(cellModel), g_PC_cell, g_TM_none, g_DR_down, i, j);
+			objs.push_back(temp);
+
+			if (i == 0)
+				temp->team = g_TM_silver;
+			if (i == 9)
+				temp->team = g_TM_red;
+			if (i == 1 && (j == 0 || j == 7))
+				temp->team = g_TM_red;
+			if (i == 8 && (j == 0 || j == 7))
+				temp->team = g_TM_silver;
+
+			temp->updateOffsetRot();
+			temp->update(true);
+		}
+	}
 }
 
 void initSprites(LPDIRECT3DDEVICE9 dxDevice)
