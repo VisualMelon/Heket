@@ -9148,10 +9148,32 @@ void addLaserSprite(int x, int y, DWORD dir)
 	float distRes;
 
 	if (getTapedObj(&rayPos, &rayDir, &distRes) == -1)
-		return;
+		distRes = 50;
 
-	UNCRZ_sprite_data sd = UNCRZ_sprite_data(D3DXVECTOR4(rayPos.x + rayDir.x * distRes, rayPos.y + rayDir.y * distRes, rayPos.z + rayDir.z * distRes, 1), D3DXVECTOR4(0, 0, 0, 0));
-	laserSprites.push_back(sd);
+	float curDist = distRes;
+
+	while (curDist > 0.0f)
+	{
+		UNCRZ_sprite_data sd = UNCRZ_sprite_data(D3DXVECTOR4(rayPos.x + rayDir.x * curDist, rayPos.y + rayDir.y * curDist, rayPos.z + rayDir.z * curDist, 1), D3DXVECTOR4(0, 0, 0, 0));
+		laserSprites.push_back(sd);
+		curDist -= 0.1f;
+	}
+
+	rayDir = -rayDir;
+
+	if (getTapedObj(&rayPos, &rayDir, &distRes) == -1)
+		distRes = -50;
+	else
+		distRes = -distRes;
+	
+	rayDir = -rayDir;
+
+	while (curDist > distRes)
+	{
+		UNCRZ_sprite_data sd = UNCRZ_sprite_data(D3DXVECTOR4(rayPos.x + rayDir.x * curDist, rayPos.y + rayDir.y * curDist, rayPos.z + rayDir.z * curDist, 1), D3DXVECTOR4(0, 0, 0, 0));
+		laserSprites.push_back(sd);
+		curDist -= 0.1f;
+	}
 }
 
 void performLaser(int x, int y, DWORD dir)
@@ -9177,7 +9199,23 @@ restart:
 
 			if (piece->type == g_PC_pharoh)
 			{
-				piece->kill();
+				// kill EVERYTHING
+				for (int i = 0; i < 10; i++)
+				{
+					for (int j = 0; j < 8; j++)
+					{
+						int oi = getOccupier(i, j);
+						if (oi != -1)
+						{
+							g_piece* occupier = objs[oi];
+							if (occupier->alive && occupier->team == piece->team)
+							{
+								occupier->kill();
+							}
+						}
+					}
+				}
+				//piece->kill();
 				goto hit;
 			}
 			else if (piece->type == g_PC_sphinx)
@@ -9941,14 +9979,14 @@ LPDIRECT3DDEVICE9 initDevice(HWND hWnd)
 	dxPresParams.MultiSampleType = D3DMULTISAMPLE_4_SAMPLES;
 	//dxPresParams.MultiSampleType = D3DMULTISAMPLE_NONE;
 	
-	dxPresParams.BackBufferWidth = 1600;
-	dxPresParams.BackBufferHeight = 1200;
+	//dxPresParams.BackBufferWidth = 1600;
+	//dxPresParams.BackBufferHeight = 1200;
 	//dxPresParams.BackBufferWidth = 1280;
 	//dxPresParams.BackBufferHeight = 960;
 	//dxPresParams.BackBufferWidth = 920;
 	//dxPresParams.BackBufferHeight = 690;
-	//dxPresParams.BackBufferWidth = 800;
-	//dxPresParams.BackBufferHeight = 600;
+	dxPresParams.BackBufferWidth = 800;
+	dxPresParams.BackBufferHeight = 600;
 
 	// fit buffers to size of screen (for testing only)
 	RECT crect;
@@ -10533,12 +10571,12 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	anubisModel->changeAnim(anubisIdle);
 
 	UNCRZ_FBF_anim* scarabIdle = getFBF_anim(&anims, "scarab_idle");
-	UNCRZ_FBF_anim* scarabDie = scarabIdle; // scarabs don't die
+	UNCRZ_FBF_anim* scarabDie = getFBF_anim(&anims, "scarab_die");
 	UNCRZ_model* scarabModel = getModel(&models, "scarab");
 	scarabModel->changeAnim(scarabIdle);
 
 	UNCRZ_FBF_anim* sphinxIdle = getFBF_anim(&anims, "sphinx_idle");
-	UNCRZ_FBF_anim* sphinxDie = sphinxIdle; // sphinxes don't die
+	UNCRZ_FBF_anim* sphinxDie = getFBF_anim(&anims, "sphinx_die");
 	UNCRZ_model* sphinxModel = getModel(&models, "sphinx");
 	sphinxModel->changeAnim(sphinxIdle);
 
