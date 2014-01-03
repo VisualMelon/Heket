@@ -730,6 +730,28 @@ VS_Output_Tex VShade_Sprite_LitPoint(VS_Input_Tex inp)
 
 
 
+VS_Output_Tex VShade_Sprite_Flat(VS_Input_Tex inp)
+{
+	VS_Output_Tex outp = (VS_Output_Tex)0;
+	float4 centre = (float4)0;
+	if (inp.tti >= 0)
+	{
+		centre = spriteLoc[inp.tti];
+	}
+	float4 oth = spriteLoc[inp.tti + 1];
+	inp.pos *= spriteDim;
+	centre = mul(centre, viewMat);
+	outp.pos = mul(centre + inp.pos, projMat);
+	outp.altPos = outp.pos;
+	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
+	outp.col = inp.col;
+	outp.txc = inp.txc;
+
+	return outp;
+}
+
+
+
 // VShade_Sprite_Fire
 VS_Output_Tex VShade_Sprite_Fire(VS_Input_Tex inp)
 {
@@ -1877,6 +1899,15 @@ technique sprite
 	{ // LitPoint
 		VertexShader = compile vs_2_0 VShade_Sprite_LitPoint();
 		PixelShader = compile ps_2_0 PShade_Tex_LitPoint();
+	}
+}
+
+technique sprite_flat
+{
+	pass unlit
+	{
+		VertexShader = compile vs_2_0 VShade_Sprite_Flat();
+		PixelShader = compile ps_2_0 PShade_Tex();
 	}
 }
 

@@ -8648,8 +8648,7 @@ std::vector<UNCRZ_font*> fonts;
 std::vector<UNCRZ_FBF_anim*> anims;
 
 std::vector<UNCRZ_model*> plantArr;
-std::vector<UNCRZ_sprite_data> fireSprites;
-std::vector<UNCRZ_sprite_data> smokeSprites;
+std::vector<UNCRZ_sprite_data> laserSprites;
 
 UNCRZ_obj* mapObj; // map, for detailed collision
 UNCRZ_obj* cloudObj; // clouds
@@ -8659,8 +8658,7 @@ std::vector<int> zsoLocalIndexes;
 
 UNCRZ_sprite_buffer sbuff;
 
-UNCRZ_sprite* fireSprite;
-UNCRZ_sprite* smokeSprite;
+UNCRZ_sprite* laserSprite;
 
 // ui
 std::vector<uiItem*> uiItems;
@@ -8745,9 +8743,11 @@ void initOvers(LPDIRECT3DDEVICE9);
 void initLights(LPDIRECT3DDEVICE9);
 void initOther();
 void updateDecals();
-bool canPlace(separator, float, float);
+LARGE_INTEGER getTime();
 void term();
 void deSelect();
+void preventInput(float);
+bool takeInput();
 void eval();
 void handleUi(uiItem*, DWORD);
 void handleUi(uiItem*, DWORD, DWORD*, int);
@@ -8931,6 +8931,7 @@ bool g_ticks = 0;
 int g_seled = -1;
 bool initialised = false;
 DWORD g_go = g_TM_red;
+LONGLONG g_noinput;
 
 //
 // end game stuff
@@ -9077,7 +9078,7 @@ int getTapedObj(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, float* distRes)
 		}
 	}
 
-	*distRes = localDistRes;
+	*distRes = bestDist;
 
 	return best;
 }
@@ -9108,30 +9109,53 @@ uiItem* getTapedUiItem(float x, float y, float* xOut, float* yOut)
 	return NULL;
 }
 
-void performLaser(int x, int y, DWORD dir)
+void getDirXY(DWORD dir, int* dx, int* dy)
 {
-restart:
-	int dx, dy;
 	if (dir == g_DR_up)
 	{
-		dx = 0;
-		dy = 1;
+		*dx = 0;
+		*dy = 1;
 	}
 	else if (dir == g_DR_right)
 	{
-		dx = 1;
-		dy = 0;
+		*dx = 1;
+		*dy = 0;
 	}
 	else if (dir == g_DR_down)
 	{
-		dx = 0;
-		dy = -1;
+		*dx = 0;
+		*dy = -1;
 	}
 	else if (dir == g_DR_left)
 	{
-		dx = -1;
-		dy = 0;
+		*dx = -1;
+		*dy = 0;
 	}
+}
+
+void addLaserSprite(int x, int y, DWORD dir)
+{
+	int dx, dy;
+	getDirXY(dir, &dx, &dy);
+
+	D3DXVECTOR3 rayDir = D3DXVECTOR3(dx, 0, dy);
+	D3DXVECTOR3 rayPos = D3DXVECTOR3(x * 2.2 - 9.9, 2.0, y * 2.2 - 7.7) + rayDir * 2.2 * 0.5;
+	float distRes;
+
+	if (getTapedObj(&rayPos, &rayDir, &distRes) == -1)
+		return;
+
+	UNCRZ_sprite_data sd = UNCRZ_sprite_data(D3DXVECTOR4(rayPos.x + rayDir.x * distRes, rayPos.y + rayDir.y * distRes, rayPos.z + rayDir.z * distRes, 1), D3DXVECTOR4(0, 0, 0, 0));
+	laserSprites.push_back(sd);
+}
+
+void performLaser(int x, int y, DWORD dir)
+{
+restart:
+	addLaserSprite(x, y, dir);
+
+	int dx, dy;
+	getDirXY(dir, &dx, &dy);
 
 	while (true)
 	{
@@ -9149,11 +9173,11 @@ restart:
 			if (piece->type == g_PC_pharoh)
 			{
 				piece->kill();
-				return;
+				goto hit;
 			}
 			else if (piece->type == g_PC_sphinx)
 			{
-				return;
+				goto hit;
 			}
 			else if (piece->type == g_PC_pyramid)
 			{
@@ -9168,7 +9192,7 @@ restart:
 					goto restart;
 				}
 				piece->kill();
-				return;
+				goto hit;
 			}
 			else if (piece->type == g_PC_scarab)
 			{
@@ -9197,13 +9221,16 @@ restart:
 			{
 				if ((piece->dir + 2) % 4 == dir)
 				{
-					return; // anubis protected from front
+					goto hit; // anubis protected from front
 				}
 				piece->kill();
-				return;
+				goto hit;
 			}
 		}
 	}
+
+hit:
+	return;
 }
 
 void g_endGo()
@@ -9226,6 +9253,8 @@ void g_endGo()
 		// laser time
 		performLaser(0, 7, objs[getOccupier(0, 7)]->dir);
 	}
+
+	preventInput(2.5f);
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -9245,6 +9274,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}*/
 		break;
 	case WM_MOUSEMOVE:
+		if (!takeInput())
+			break;
+		
 		sx = (float)LOWORD(lParam);
 		sy = (float)HIWORD(lParam);
 
@@ -9257,6 +9289,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_LBUTTONDOWN:
+		if (!takeInput())
+			break;
+
 		sx = (float)LOWORD(lParam);
 		sy = (float)HIWORD(lParam);
 
@@ -9269,6 +9304,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_RBUTTONDOWN:
+		if (!takeInput())
+			break;
+
 		sx = (float)LOWORD(lParam);
 		sy = (float)HIWORD(lParam);
 
@@ -9282,6 +9320,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_KEYDOWN:
 		keyDown[wParam] = true;
+
+		if (!takeInput())
+			break;
+
 		if (wParam == 64 + 17) // q
 		{
 			if (g_seled != -1)
@@ -9716,6 +9758,28 @@ void handleKeys()
 	}
 }
 
+float compTime(LARGE_INTEGER a, LARGE_INTEGER b)
+{
+	return (float)(a.QuadPart - b.QuadPart) / (float)hrsec.QuadPart;
+}
+
+LARGE_INTEGER getTime()
+{
+	LARGE_INTEGER tt;
+	QueryPerformanceCounter(&tt);
+	return tt;
+}
+
+void preventInput(float seconds)
+{
+	g_noinput = getTime().QuadPart + (LONGLONG)((float)hrsec.QuadPart * seconds);
+}
+
+bool takeInput()
+{
+	return !(getTime().QuadPart < g_noinput);
+}
+
 void evalTime()
 {
 	g_ticks++;
@@ -9724,6 +9788,12 @@ void evalTime()
 void eval()
 {
 	evalTime();
+
+	if (!takeInput())
+		return;
+
+	laserSprites.clear();
+
 	handleKeys();
 
 	float distRes;
@@ -9732,29 +9802,7 @@ void eval()
 	// sprites
 	DEBUG_HR_START(&hrsbstart);
 
-	// fire
-	for (int i = (int)fireSprites.size() - 1; i >= 0; i--)
-	{
-		if (++fireSprites[i].other.x >= fireSprites[i].other.w)
-			fireSprites.erase(fireSprites.begin() + i, fireSprites.begin() + i + 1);
-		else
-		{
-			fireSprites[i].pos.x += 0.001 * (float)rnd(100);
-			fireSprites[i].pos.y += 0.1;
-			fireSprites[i].pos.z += 0.001 * (float)rnd(100);
-		}
-	}
-
-	// smoke
-	for (int i = (int)smokeSprites.size() - 1; i >= 0; i--)
-	{
-		smokeSprites[i].pos.x += 0.001 * (float)rnd(100);
-		smokeSprites[i].pos.y += 0.1;
-		smokeSprites[i].pos.z += 0.001 * (float)rnd(100);
-		smokeSprites[i].other.x += smokeSprites[i].other.y * (float)rnd(10);
-		if (smokeSprites[i].other.x >= 1)
-			smokeSprites.erase(smokeSprites.begin() + i, smokeSprites.begin() + i + 1);
-	}
+	
 
 	DEBUG_HR_END(&hrsbstart, &hrsbend, &hrevalSpritesTime);
 
@@ -9840,6 +9888,8 @@ void eval()
 
 void reload(LPDIRECT3DDEVICE9 dxDevice)
 {
+	g_noinput = getTime().QuadPart + hrsec.QuadPart;
+
 	objs.clear();
 
 	for (int i = models.size() - 1; i >= 0; i--)
@@ -10679,8 +10729,7 @@ void initSprites(LPDIRECT3DDEVICE9 dxDevice)
 	sbuff = UNCRZ_sprite_buffer();
 	sbuff.create(dxDevice, vertexDecPCT, 50);
 
-	fireSprite = sprites[0];
-	smokeSprite = sprites[1];
+	laserSprite = sprites[0];
 }
 
 void disableClip(LPDIRECT3DDEVICE9);
@@ -11079,15 +11128,11 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 
 		DEBUG_HR_START(&hrsbstart);
 		// colour
-		if (fireSprites.size() > 0)
-			fireSprite->draw(dxDevice, &ddat, &sbuff, &fireSprites.front(), 0, fireSprites.size(), DF_default, SD_colour);
-		if (smokeSprites.size() > 0)
-			smokeSprite->draw(dxDevice, &ddat, &sbuff, &smokeSprites.front(), 0, smokeSprites.size(), DF_default, SD_colour);
+		if (laserSprites.size() > 0)
+			laserSprite->draw(dxDevice, &ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), DF_default, SD_colour);
 		// alpha
-		if (fireSprites.size() > 0)
-			fireSprite->draw(dxDevice, &ddat, &sbuff, &fireSprites.front(), 0, fireSprites.size(), DF_default, SD_alpha);
-		if (smokeSprites.size() > 0)
-			smokeSprite->draw(dxDevice, &ddat, &sbuff, &smokeSprites.front(), 0, smokeSprites.size(), DF_default, SD_alpha);
+		if (laserSprites.size() > 0)
+			laserSprite->draw(dxDevice, &ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), DF_default, SD_alpha);
 		DEBUG_DX_FLUSH();
 		DEBUG_HR_ACCEND(&hrsbstart, &hrsbend, &hrdrawSpritesTime);
 
@@ -11473,23 +11518,15 @@ void drawScene(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_view* view, DWO
 		mapObj->draw(dxDevice, ddat, drawArgs);
 		drawZBackToFront(zSortedObjs, view->zsoLocalIndexes, dxDevice, ddat, drawArgs);
 
-		if (fireSprites.size() > 0)
+		if (laserSprites.size() > 0)
 		{
-			fireSprite->draw(dxDevice, ddat, &sbuff, &fireSprites.front(), 0, fireSprites.size(), drawArgs, SD_default);
-		}
-		if (smokeSprites.size() > 0)
-		{
-			smokeSprite->draw(dxDevice, ddat, &sbuff, &smokeSprites.front(), 0, smokeSprites.size(), drawArgs, SD_default);
+			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_default);
 		}
 
 		// not asif we need these or anything
-		if (smokeSprites.size() > 0)
+		if (laserSprites.size() > 0)
 		{
-			fireSprite->draw(dxDevice, ddat, &sbuff, &fireSprites.front(), 0, fireSprites.size(), drawArgs, SD_alpha);
-		}
-		if (smokeSprites.size() > 0)
-		{
-			smokeSprite->draw(dxDevice, ddat, &sbuff, &smokeSprites.front(), 0, smokeSprites.size(), drawArgs, SD_alpha);
+			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_alpha);
 		}
 	}
 	else
@@ -11516,15 +11553,11 @@ void drawScene(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_view* view, DWO
 
 		DEBUG_HR_START(&hrsbstart);
 		// colour
-		if (fireSprites.size() > 0)
-			fireSprite->draw(dxDevice, ddat, &sbuff, &fireSprites.front(), 0, fireSprites.size(), drawArgs, SD_colour);
-		if (smokeSprites.size() > 0)
-			smokeSprite->draw(dxDevice, ddat, &sbuff, &smokeSprites.front(), 0, smokeSprites.size(), drawArgs, SD_colour);
+		if (laserSprites.size() > 0)
+			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_colour);
 		// alpha
-		if (fireSprites.size() > 0)
-			fireSprite->draw(dxDevice, ddat, &sbuff, &fireSprites.front(), 0, fireSprites.size(), drawArgs, SD_alpha);
-		if (smokeSprites.size() > 0)
-			smokeSprite->draw(dxDevice, ddat, &sbuff, &smokeSprites.front(), 0, smokeSprites.size(), drawArgs, SD_alpha);
+		if (laserSprites.size() > 0)
+			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_alpha);
 		DEBUG_DX_FLUSH();
 		DEBUG_HR_ACCEND(&hrsbstart, &hrsbend, &hrdrawSpritesTime);
 	}
@@ -11624,13 +11657,9 @@ void drawLight(LPDIRECT3DDEVICE9 dxDevice, lightData* ld)
 	//dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, true);
 	mapObj->draw(dxDevice, &ddat, DF_light);
 	drawZBackToFront(zSortedObjs, ld->zsoLocalIndexes, dxDevice, &ddat, DF_light);
-	if (fireSprites.size() > 0)
+	if (laserSprites.size() > 0)
 	{
-		fireSprite->draw(dxDevice, &ddat, &sbuff, &fireSprites.front(), 0, fireSprites.size(), DF_light, SD_default);
-	}
-	if (smokeSprites.size() > 0)
-	{
-		smokeSprite->draw(dxDevice, &ddat, &sbuff, &smokeSprites.front(), 0, smokeSprites.size(), DF_light, SD_default);
+		laserSprite->draw(dxDevice, &ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), DF_light, SD_default);
 	}
 
 	dxDevice->EndScene();
