@@ -2206,8 +2206,15 @@ skipPlainDecalPass:
 		}
 		else
 		{
+			DWORD oldFillMode;
+			dxDevice->GetRenderState(D3DRS_FILLMODE, &oldFillMode);
+
 			drawToSide(dxDevice, transArr, ddat, drawArgs);
+			
+			dxDevice->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
 			drawSideOver(dxDevice, ddat);
+
+			dxDevice->SetRenderState(D3DRS_FILLMODE, oldFillMode);
 		}
 	}
 
@@ -9934,14 +9941,14 @@ LPDIRECT3DDEVICE9 initDevice(HWND hWnd)
 	dxPresParams.MultiSampleType = D3DMULTISAMPLE_4_SAMPLES;
 	//dxPresParams.MultiSampleType = D3DMULTISAMPLE_NONE;
 	
-	//dxPresParams.BackBufferWidth = 1600;
-	//dxPresParams.BackBufferHeight = 1200;
+	dxPresParams.BackBufferWidth = 1600;
+	dxPresParams.BackBufferHeight = 1200;
 	//dxPresParams.BackBufferWidth = 1280;
 	//dxPresParams.BackBufferHeight = 960;
 	//dxPresParams.BackBufferWidth = 920;
 	//dxPresParams.BackBufferHeight = 690;
-	dxPresParams.BackBufferWidth = 800;
-	dxPresParams.BackBufferHeight = 600;
+	//dxPresParams.BackBufferWidth = 800;
+	//dxPresParams.BackBufferHeight = 600;
 
 	// fit buffers to size of screen (for testing only)
 	RECT crect;
@@ -10836,7 +10843,7 @@ next:
 	goto next;
 
 sorted:
-	for (int i = curTop; i >= 0; i--)
+	for (int i = curTop - 1; i >= 0; i--)
 	{
 		objList[mol[i]]->draw(dxDevice, ddat, drawArgs);
 	}
