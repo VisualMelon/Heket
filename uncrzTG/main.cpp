@@ -4833,26 +4833,43 @@ public:
 	DWORD type;
 	DWORD team;
 
-	int dir;
 	bool alive;
-	int x, y;
+	int x, y, dir;
+	int sx, sy, sdir;
+	UNCRZ_FBF_anim* idleAnim;
 	UNCRZ_FBF_anim* deathAnim;
+
+	void reset()
+	{
+		x = sx;
+		y = sy;
+		dir = sdir;
+		changeAnim(idleAnim);
+
+		if (team == g_TM_red)
+			model->sections[0]->colMod = g_CL_red;
+		else if (team == g_TM_silver)
+			model->sections[0]->colMod = g_CL_silver;
+		
+		alive = true;
+		updateOffsetRot();
+		update(true);
+	}
 
 	g_piece(UNCRZ_model* modelN, DWORD typeN, DWORD teamN, int dirN, int xN, int yN) : UNCRZ_obj(modelN)
 	{
+		idleAnim = model->animInst->anim;
+
 		alive = true;
 
 		type = typeN;
 		team = teamN;
 
-		dir = dirN;
-		x = xN;
-		y = yN;
+		sdir = dirN;
+		sx = xN;
+		sy = yN;
 
-		if (teamN == g_TM_red)
-			modelN->sections[0]->colMod = g_CL_red;
-		else if (teamN == g_TM_silver)
-			modelN->sections[0]->colMod = g_CL_silver;
+		reset();
 	}
 
 	void kill()
@@ -8224,6 +8241,7 @@ public:
 	D3DCOLOR textCol;
 	int textBufferSize;
 	std::string text;
+	DWORD textAlign;
 
 	std::vector<uiItem*> uiItems;
 	uiItem* parent;
@@ -8262,6 +8280,8 @@ public:
 	// text constructor
 	uiItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, DWORD itemTypeN, RECT rectN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN)
 	{
+		textAlign = DT_LEFT;
+
 		zeroIsh();
 
 		name = nameN;
@@ -8343,7 +8363,7 @@ public:
 		nRect.top = vt->yToTextY(rect.top + offsetY);
 		nRect.bottom = vt->yToTextY(rect.bottom + offsetY);
 
-		font->DrawTextA(NULL, text.c_str(), -1, &nRect, 0, textCol);
+		font->DrawTextA(NULL, text.c_str(), -1, &nRect, textAlign, textCol);
 	}
 
 	void drawTex(LPDIRECT3DDEVICE9 dxDevice, float offsetX, float offsetY, viewTrans* vt)
@@ -8531,7 +8551,7 @@ public:
 
 	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
 	{
-		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
 	}
 
 	void dirNormalAt(D3DXVECTOR3 camTarg)
@@ -8634,7 +8654,7 @@ public:
 
 	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
 	{
-		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
 	}
 };
 
@@ -8669,6 +8689,7 @@ UNCRZ_sprite* laserSprite;
 std::vector<uiItem*> uiItems;
 viewTrans mainVt;
 uiItem* mainView;
+uiItem* bannerText;
 
 // debuging (ui items)
 bool debugData = false;
@@ -8758,7 +8779,10 @@ void handleUi(uiItem*, DWORD);
 void handleUi(uiItem*, DWORD, DWORD*, int);
 void handleKeys();
 void reload(LPDIRECT3DDEVICE9);
+void g_align(float, float, bool);
+void g_startGo();
 void g_endGo();
+void g_startGame();
 void moveCamera(LPDIRECT3DDEVICE9);
 void moveCameraView(LPDIRECT3DDEVICE9, UNCRZ_view*);
 void moveCamerawaterReflect(LPDIRECT3DDEVICE9);
@@ -8776,8 +8800,8 @@ float ticker = 0;
 
 char* appName = "Heket";
 char* windowText = "Heket";
-int windowSizeX = 800;
-int windowSizeY = 600;
+int windowSizeX = 1000;
+int windowSizeY = 700;
 
 D3DXVECTOR3 camPos(0.0f, 40.0f, 0.0f);
 float rotY = 0;
@@ -8935,6 +8959,7 @@ bool g_pause = false;
 bool g_ticks = 0;
 int g_seled = -1;
 bool initialised = false;
+bool g_autoalign = true;
 DWORD g_go = g_TM_red;
 LONGLONG g_noinput;
 
@@ -9028,7 +9053,6 @@ int WINAPI WinMain(HINSTANCE hInstance,
 	initOther();
 
 	reload(mainDxDevice);
-	g_endGo();
 
 	initialised = true; // this is rather important
 
@@ -9065,7 +9089,7 @@ int getOccupier(int x, int y)
 	return -1;
 }
 
-int getTapedObj(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, float* distRes)
+int getTapedObj(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, float* distRes, DWORD teamOnly = g_TM_none)
 {
 	int best = -1;
 	float bestDist;
@@ -9073,6 +9097,8 @@ int getTapedObj(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, float* distRes)
 
 	for (int i = objs.size() - 1; i >= 0; i--)
 	{
+		if (teamOnly != g_TM_none && (objs[i]->alive == false || objs[i]->team != teamOnly))
+			continue;
 		if (objs[i]->model->collides(rayPos, rayDir, &localDistRes))
 		{
 			if (best == -1 || localDistRes < bestDist)
@@ -9176,8 +9202,10 @@ void addLaserSprite(int x, int y, DWORD dir)
 	}
 }
 
-void performLaser(int x, int y, DWORD dir)
+DWORD performLaser(int x, int y, DWORD dir)
 {
+	DWORD winner = g_TM_none;
+
 restart:
 	addLaserSprite(x, y, dir);
 
@@ -9190,7 +9218,7 @@ restart:
 		y += dy;
 
 		if (x < 0 || x > 9 || y < 0 || y > 7)
-			return; // off edge
+			goto noHit; // off edge
 
 		int hit = getOccupier(x, y);
 		if (hit != -1)
@@ -9216,6 +9244,10 @@ restart:
 					}
 				}
 				//piece->kill();
+				if (piece->team == g_TM_silver)
+					winner = g_TM_red;
+				else if (piece->team == g_TM_red)
+					winner = g_TM_silver;
 				goto hit;
 			}
 			else if (piece->type == g_PC_sphinx)
@@ -9272,8 +9304,61 @@ restart:
 		}
 	}
 
+noHit:
+	// nothing killed, get on with it
+	preventInput(1.0f);
+	return winner;
+
 hit:
-	return;
+	// something killed, give a couple of seconds to watch animation
+	preventInput(2.0f);
+	return winner;
+}
+
+void g_align(float leftNess = 0.0f, float highNess = 0.0f, bool force = false)
+{
+	if (!force && !g_autoalign)
+		return;
+
+	leftNess = leftNess / 1.0f;
+	highNess = highNess / 3.0f + (2.0f / 3.0f);
+
+	if (g_go == g_TM_silver)
+	{
+		targRotPar = D3DX_PI * -0.5 * highNess;
+		targRotY = D3DX_PI * 0.5 - leftNess;
+	}
+	else if (g_go == g_TM_red)
+	{
+		targRotPar = D3DX_PI * -0.5 * highNess;
+		targRotY = D3DX_PI * -0.5 - leftNess;
+	}
+}
+
+void g_win(DWORD winner)
+{
+	if (winner == g_TM_silver)
+	{
+		bannerText->text = "Silver Wins!";
+	}
+	else if (winner == g_TM_red)
+	{
+		bannerText->text = "Red Wins!";
+	}
+}
+
+void g_startGo()
+{
+	if (g_go == g_TM_silver)
+	{
+		bannerText->text = "Silver's Turn";
+	}
+	else if (g_go == g_TM_red)
+	{
+		bannerText->text = "Red's Turn";
+	}
+
+	g_align();
 }
 
 void g_endGo()
@@ -9281,23 +9366,40 @@ void g_endGo()
 	if (g_go == g_TM_red)
 	{
 		g_go = g_TM_silver;
-		targRotPar = D3DX_PI * -0.5 * (2.0 / 3.0);
-		targRotY = D3DX_PI * 0.5;
 
 		// laser time
-		performLaser(9, 0, objs[getOccupier(9, 0)]->dir);
+		DWORD winner = performLaser(9, 0, objs[getOccupier(9, 0)]->dir);
+		if (winner != g_TM_none)
+		{
+			g_win(winner);
+			return;
+		}
 	}
 	else if (g_go == g_TM_silver)
 	{
 		g_go = g_TM_red;
-		targRotPar = D3DX_PI * -0.5 * (2.0 / 3.0);
-		targRotY = D3DX_PI * -0.5;
 
 		// laser time
-		performLaser(0, 7, objs[getOccupier(0, 7)]->dir);
+		DWORD winner = performLaser(0, 7, objs[getOccupier(0, 7)]->dir);
+		if (winner != g_TM_none)
+		{
+			g_win(winner);
+			return;
+		}
 	}
 
-	preventInput(2.5f);
+	g_startGo();
+	return;
+}
+
+void g_startGame()
+{
+	for (int i = objs.size() - 1; i >= 0; i--)
+	{
+		objs[i]->reset();
+	}
+	g_go = g_TM_silver;
+	g_startGo();
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -9459,10 +9561,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		else if (wParam == 64 + 7) // g
 		{
+			g_autoalign = !g_autoalign;
 		}
 		else if (wParam == 64 + 18) // r
 		{
-			reload(mainDxDevice);
+			g_startGame();
+			//reload(mainDxDevice);
 		}
 		else if (wParam == VK_PAUSE || wParam == 64 + 16) // p
 		{
@@ -9565,13 +9669,6 @@ float getDistNoSqrt(float x0, float y0, float z0, float x1, float y1, float z1)
 	return x * x + y * y + z * z;
 }
 
-int iabs(int num)
-{
-	if (num < 0)
-		return -num;
-	return num;
-}
-
 void prepBMap(std::ifstream* file, int* width, int* height)
 {
 	for (int i = 0; i < 10; i++)
@@ -9653,7 +9750,7 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 			rayDir.y /= rayDirMod;
 			rayDir.z /= rayDirMod;
 
-			taped = getTapedObj(&rayPos, &rayDir, &distRes);
+			taped = getTapedObj(&rayPos, &rayDir, &distRes, g_go);
 			if (g_seled != -1)
 			{
 				objs[g_seled]->offset.y = 0;
@@ -9662,12 +9759,24 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 			}
 			if (taped != -1)
 			{
-				if (objs[taped]->type != g_PC_cell && objs[taped]->team == g_go)
+				g_seled = taped;
+				objs[g_seled]->offset.y = 1;
+				objs[g_seled]->update(true);
+				
+				if (g_go == g_TM_red)
 				{
-					g_seled = taped;
-					objs[g_seled]->offset.y = 1;
-					objs[g_seled]->update(true);
+					float leftNess = ((float)objs[g_seled]->x - 4.5f) / 9.0f;
+					float highNess = ((float)objs[g_seled]->y - 0.0f) / 8.0f;
+					g_align(leftNess, highNess - abs(leftNess));
 				}
+				else if (g_go == g_TM_silver)
+				{
+					float leftNess = (4.5f - (float)objs[g_seled]->x) / 9.0f;
+					float highNess = (7.0f - (float)objs[g_seled]->y) / 8.0f;
+					g_align(leftNess, highNess - abs(leftNess));
+				}
+				else
+					g_align();
 			}
 		}
 		break;
@@ -9706,7 +9815,9 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 					g_piece* mover = objs[g_seled];
 					if (x == mover->x && y == mover->y)
 						goto noGo;
-					if (iabs(x - mover->x) > 1 || iabs(y - mover->y) > 1)
+					if (mover->type == g_PC_sphinx)
+						goto noGo;
+					if (abs(x - mover->x) > 1 || abs(y - mover->y) > 1)
 						goto noGo;
 					if (mover->type != g_PC_scarab && getOccupier(x, y) != -1)
 						goto noGo;
@@ -9778,10 +9889,13 @@ void handleKeys()
 		//D3DXSaveTextureToFile("mehUnder.bmp", D3DXIFF_BMP, underTex, NULL);
 		//D3DXSaveTextureToFile("mehLight.bmp", D3DXIFF_BMP, lights[2]->lightTex, NULL);
 		//D3DXSaveTextureToFile("mehSun.bmp", D3DXIFF_BMP, lights[0]->lightTex, NULL);
-		D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
-		D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
-		D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
-		D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
+
+		//D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
+		//D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
+		//D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
+		//D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
+
+		g_align(0.0f, 0.0f, true);
 	}
 	if (keyDown[64 + 23]) // w
 	{ // FORWARD
@@ -9875,18 +9989,7 @@ void eval()
 	{
 		rotY += D3DX_PI * 2;
 	}
-	if (rotY > targRotY)
-	{
-		rotY -= 0.05f;
-		if (rotY < targRotY)
-			rotY = targRotY;
-	}
-	if (rotY < targRotY)
-	{
-		rotY += 0.05f;
-		if (rotY > targRotY)
-			rotY = targRotY;
-	}
+	float dRotY = targRotY - rotY;
 
 	// rotPar
 	while (rotPar > targRotPar + D3DX_PI)
@@ -9897,17 +10000,32 @@ void eval()
 	{
 		rotPar += D3DX_PI * 2;
 	}
-	if (rotPar > targRotPar)
+	float dRotPar = targRotPar - rotPar;
+
+	// change
+	float dRotMod = sqrtf(dRotY * dRotY + dRotPar * dRotPar) * 10.0;
+	if (dRotMod > 1.0)
 	{
-		rotPar -= 0.05f;
-		if (rotPar < targRotPar)
+		dRotY /= dRotMod;
+		dRotPar /= dRotMod;
+
+		rotY += dRotY;
+		rotPar += dRotPar;
+
+		// set if over
+		if (dRotY < 0.0f && rotY < targRotY)
+			rotY = targRotY;
+		if (dRotY > 0.0f && rotY > targRotY)
+			rotY = targRotY;
+		if (dRotPar < 0.0f && rotPar < targRotPar)
+			rotPar = targRotPar;
+		if (dRotPar > 0.0f && rotPar > targRotPar)
 			rotPar = targRotPar;
 	}
-	if (rotPar < targRotPar)
+	else
 	{
-		rotPar += 0.05f;
-		if (rotPar > targRotPar)
-			rotPar = targRotPar;
+		rotY = targRotY;
+		rotPar = targRotPar;
 	}
 
 	RECT crect;
@@ -9937,11 +10055,8 @@ void reload(LPDIRECT3DDEVICE9 dxDevice)
 {
 	g_noinput = getTime().QuadPart + hrsec.QuadPart;
 
-	//if (mapObj != NULL)
-	//	mapObj->model->release();
-	//if (cloudObj != NULL)
-	//	cloudObj->model->release();
 	objs.clear();
+	zSortedObjs.clear();
 
 	for (int i = models.size() - 1; i >= 0; i--)
 	{
@@ -9957,6 +10072,8 @@ void reload(LPDIRECT3DDEVICE9 dxDevice)
 
 	initObjs(dxDevice);
 	initSprites(dxDevice);
+
+	g_startGame();
 }
 
 LPDIRECT3DDEVICE9 initDevice(HWND hWnd)
@@ -9985,14 +10102,14 @@ LPDIRECT3DDEVICE9 initDevice(HWND hWnd)
 	//dxPresParams.BackBufferHeight = 960;
 	//dxPresParams.BackBufferWidth = 920;
 	//dxPresParams.BackBufferHeight = 690;
-	dxPresParams.BackBufferWidth = 800;
-	dxPresParams.BackBufferHeight = 600;
+	//dxPresParams.BackBufferWidth = 800;
+	//dxPresParams.BackBufferHeight = 600;
 
 	// fit buffers to size of screen (for testing only)
 	RECT crect;
 	GetClientRect(mainHWnd, &crect);
-	//dxPresParams.BackBufferWidth = crect.right - crect.left + 1;
-	//dxPresParams.BackBufferHeight = crect.bottom - crect.top + 1;
+	dxPresParams.BackBufferWidth = crect.right - crect.left;// + 1;
+	dxPresParams.BackBufferHeight = crect.bottom - crect.top;// + 1;
 
 	if (dxPresParams.Windowed)
 		dxPresParams.FullScreen_RefreshRateInHz = 0;
@@ -10054,6 +10171,25 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	uiItems.push_back(temp);
 	temp->colMod = D3DXVECTOR4(1, 1, 1, 1);
 	mainView = temp;
+
+	rect.left = 0;
+	rect.right = winWidth + 1;
+	rect.top = 0;
+	rect.bottom = 40;
+	temp = new uiItem(dxDevice, "banner", mainView, UIT_button, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/banner.tga", rect, &effects, &textures);
+	temp->enabled = true;
+	temp->clickable = true;
+	temp->colMod = D3DXVECTOR4(1, 1, 1, 1);
+
+	rect.left = 0;
+	rect.right = winWidth + 1;
+	rect.top = 0;
+	rect.bottom = 35;
+	temp = new uiItem(dxDevice, "bannertext", mainView, UIT_text, rect, "Silver's Turn", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	temp->enabled = true;
+	temp->clickable = false;
+	temp->textAlign = DT_CENTER | DT_VCENTER;
+	bannerText = temp;
 
 	// debug view
 	rect.left = 175;
@@ -11062,7 +11198,7 @@ void drawUi(LPDIRECT3DDEVICE9 dxDevice)
 	dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 	dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
 
-	dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+	//dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
 
 	dxDevice->SetRenderState(D3DRS_ZENABLE, false);
 	dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, false);
@@ -11324,7 +11460,7 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 		dxDevice->SetRenderTarget(0, finalTargetSurface);
 		dxDevice->SetDepthStencilSurface(zSurface);
 
-		dxDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 100, 200), 1.0f, 0);
+		dxDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
 		dxDevice->Clear(0, NULL, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
 		dxDevice->SetRenderState(D3DRS_ZENABLE, false);
 		dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
@@ -11775,15 +11911,15 @@ void initTextures(LPDIRECT3DDEVICE9 dxDevice)
 	// side
 	D3DXCreateTexture(dxDevice, vp.Width * targetTexScale, vp.Height * targetTexScale, 0, D3DUSAGE_RENDERTARGET, D3DFMT_A8B8G8R8, D3DPOOL_DEFAULT, &sideTex);
 	sideTex->GetSurfaceLevel(0, &sideSurface);
-	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSideSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSideSurface, NULL);
 	
 	// target
 	D3DXCreateTexture(dxDevice, vp.Width * targetTexScale, vp.Height * targetTexScale, 0, D3DUSAGE_RENDERTARGET, D3DFMT_A8B8G8R8, D3DPOOL_DEFAULT, &targetTex);
 	targetTex->GetSurfaceLevel(0, &targetSurface);
-	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
 	
 	// light
-	dxDevice->CreateDepthStencilSurface(vp.Width * lightTexScale, vp.Height * lightTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zLightSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * lightTexScale, vp.Height * lightTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zLightSurface, NULL);
 
 	HRESULT res;
 	//res = D3DXCreateTextureFromFile(dxDevice, "ripples.tga", &ripplesTex);
