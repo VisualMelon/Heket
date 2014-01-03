@@ -34908,7 +34908,7 @@ technique_decal simple_decal
 technique_over over
 texture white.tga
 lighting full
-alpha none
+alpha nice
 
 f 0 2 1
 f 3 4 2

@@ -64,6 +64,35 @@ end flow
 end anim
 
 
+anim anubis_die
+model anubis
+
+flow 0
+
+motion a
+noupdate
+duration 30
+end motion
+
+motion b
+a offset_smth0 one 0 20 0x
+duration 250
+end motion
+
+end flow
+
+flow 1
+
+motion c
+a colmod one 0 0 0 0
+duration 100
+end motion
+
+end flow
+
+end anim
+
+
 // scarab
 anim scarab_idle
 model scarab
@@ -114,6 +143,36 @@ end anim
 
 
 
+anim pharoh_die
+model pharoh
+
+flow 0
+
+motion a
+noupdate
+duration 30
+end motion
+
+motion b
+a offset_smth0 one 0 20 0x
+duration 250
+end motion
+
+end flow
+
+flow 1
+
+motion c
+a colmod one 0 0 0 0
+duration 100
+end motion
+
+end flow
+
+end anim
+
+
+
 // pyramid
 anim pyramid_idle
 model pyramid
@@ -123,6 +182,38 @@ flow 0
 motion a
 noupdate
 duration 10000
+end motion
+
+end flow
+
+end anim
+
+
+
+anim pyramid_die
+model pyramid
+
+flow 0
+
+motion a
+noupdate
+duration 30
+end motion
+
+motion b
+a offset_smth0 one 0 20 0
+a offset_smth0 mirror 0 20 0
+duration 250
+end motion
+
+end flow
+
+flow 1
+
+motion c
+a colmod one 0 0 0 0
+a colmod mirror 0 0 0 1
+duration 100
 end motion
 
 end flow

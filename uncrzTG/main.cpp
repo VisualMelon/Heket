@@ -4829,6 +4829,7 @@ public:
 	int dir;
 	bool alive;
 	int x, y;
+	UNCRZ_FBF_anim* deathAnim;
 
 	g_piece(UNCRZ_model* modelN, DWORD typeN, DWORD teamN, int dirN, int xN, int yN) : UNCRZ_obj(modelN)
 	{
@@ -4849,6 +4850,8 @@ public:
 
 	void kill()
 	{
+		changeAnim(deathAnim);
+
 		alive = false;
 		updateOffsetRot();
 		update(true);
@@ -4862,11 +4865,6 @@ public:
 		// don't mess with y
 		offset = D3DXVECTOR3(x * 2.2 - 9.9, offset.y, y * 2.2 - 7.7);
 		rotation = D3DXVECTOR3(0, (dir - 1) * D3DX_PI * 0.5, 0);
-
-		if (!alive)
-		{ // we can mess with it here
-			offset.y = -20;
-		}
 	}
 };
 
@@ -9198,22 +9196,22 @@ restart:
 			{
 				if ((piece->dir + 2) % 4 == dir)
 				{
-					dir = (dir - 1) % 4;
+					dir = (dir + 1) % 4;
 					goto restart;
 				}
 				else if ((piece->dir + 3) % 4 == dir)
 				{
-					dir = (dir + 1) % 4;
+					dir = (dir - 1) % 4;
 					goto restart;
 				}
 				else if ((piece->dir + 0) % 4 == dir)
 				{
-					dir = (dir - 1) % 4;
+					dir = (dir + 1) % 4;
 					goto restart;
 				}
 				else if ((piece->dir + 1) % 4 == dir)
 				{
-					dir = (dir + 1) % 4;
+					dir = (dir - 1) % 4;
 					goto restart;
 				}
 			}
@@ -9416,6 +9414,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		else if (wParam == 64 + 7) // g
 		{
+		}
+		else if (wParam == 64 + 18) // r
+		{
+			reload(mainDxDevice);
 		}
 		else if (wParam == VK_PAUSE || wParam == 64 + 16) // p
 		{
@@ -9890,6 +9892,10 @@ void reload(LPDIRECT3DDEVICE9 dxDevice)
 {
 	g_noinput = getTime().QuadPart + hrsec.QuadPart;
 
+	//if (mapObj != NULL)
+	//	mapObj->model->release();
+	//if (cloudObj != NULL)
+	//	cloudObj->model->release();
 	objs.clear();
 
 	for (int i = models.size() - 1; i >= 0; i--)
@@ -10515,22 +10521,27 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	cloudObj->update(true);
 
 	UNCRZ_FBF_anim* anubisIdle = getFBF_anim(&anims, "anubis_idle");
+	UNCRZ_FBF_anim* anubisDie = getFBF_anim(&anims, "anubis_die");
 	UNCRZ_model* anubisModel = getModel(&models, "anubis");
 	anubisModel->changeAnim(anubisIdle);
 
 	UNCRZ_FBF_anim* scarabIdle = getFBF_anim(&anims, "scarab_idle");
+	UNCRZ_FBF_anim* scarabDie = scarabIdle; // scarabs don't die
 	UNCRZ_model* scarabModel = getModel(&models, "scarab");
 	scarabModel->changeAnim(scarabIdle);
 
 	UNCRZ_FBF_anim* sphinxIdle = getFBF_anim(&anims, "sphinx_idle");
+	UNCRZ_FBF_anim* sphinxDie = sphinxIdle; // sphinxes don't die
 	UNCRZ_model* sphinxModel = getModel(&models, "sphinx");
 	sphinxModel->changeAnim(sphinxIdle);
 
 	UNCRZ_FBF_anim* pharohIdle = getFBF_anim(&anims, "pharoh_idle");
+	UNCRZ_FBF_anim* pharohDie = getFBF_anim(&anims, "pharoh_die");
 	UNCRZ_model* pharohModel = getModel(&models, "pharoh");
 	pharohModel->changeAnim(pharohIdle);
 
 	UNCRZ_FBF_anim* pyramidIdle = getFBF_anim(&anims, "pyramid_idle");
+	UNCRZ_FBF_anim* pyramidDie = getFBF_anim(&anims, "pyramid_die");
 	UNCRZ_model* pyramidModel = getModel(&models, "pyramid");
 	pyramidModel->changeAnim(pyramidIdle);
 
@@ -10540,24 +10551,28 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	temp = new g_piece(new UNCRZ_model(anubisModel), g_PC_anubis, g_TM_red, g_DR_up, 3, 0);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = anubisDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 
 	temp = new g_piece(new UNCRZ_model(anubisModel), g_PC_anubis, g_TM_red, g_DR_up, 5, 0);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = anubisDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 
 	temp = new g_piece(new UNCRZ_model(anubisModel), g_PC_anubis, g_TM_silver, g_DR_down, 4, 7);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = anubisDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 
 	temp = new g_piece(new UNCRZ_model(anubisModel), g_PC_anubis, g_TM_silver, g_DR_down, 6, 7);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = anubisDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 
@@ -10565,24 +10580,28 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	temp = new g_piece(new UNCRZ_model(scarabModel), g_PC_scarab, g_TM_red, g_DR_up, 4, 3);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = scarabDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(scarabModel), g_PC_scarab, g_TM_red, g_DR_left, 5, 3);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = scarabDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(scarabModel), g_PC_scarab, g_TM_silver, g_DR_right, 4, 4);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = scarabDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(scarabModel), g_PC_scarab, g_TM_silver, g_DR_down, 5, 4);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = scarabDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 
@@ -10590,12 +10609,14 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	temp = new g_piece(new UNCRZ_model(sphinxModel), g_PC_sphinx, g_TM_red, g_DR_up, 9, 0);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = sphinxDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(sphinxModel), g_PC_sphinx, g_TM_silver, g_DR_down, 0, 7);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = sphinxDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 
@@ -10603,12 +10624,14 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	temp = new g_piece(new UNCRZ_model(pharohModel), g_PC_pharoh, g_TM_red, g_DR_up, 4, 0);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pharohDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pharohModel), g_PC_pharoh, g_TM_silver, g_DR_down, 5, 7);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pharohDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 
@@ -10616,84 +10639,98 @@ void initObjs(LPDIRECT3DDEVICE9 dxDevice)
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_left, 2, 0);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_right, 7, 7);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_left, 2, 3);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_right, 7, 4);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_down, 2, 4);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_up, 7, 3);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_down, 9, 3);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_up, 0, 4);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_left, 9, 4);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_right, 0, 3);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_left, 3, 5);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_right, 6, 2);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_red, g_DR_up, 7, 1);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 	
 	temp = new g_piece(new UNCRZ_model(pyramidModel), g_PC_pyramid, g_TM_silver, g_DR_down, 2, 6);
 	zSortedObjs.push_back(temp);
 	objs.push_back(temp);
+	temp->deathAnim = pyramidDie;
 	temp->updateOffsetRot();
 	temp->update(true);
 
