@@ -745,6 +745,7 @@ VS_Output_Tex VShade_Sprite_Flat(VS_Input_Tex inp)
 	outp.altPos = outp.pos;
 	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
 	outp.col = inp.col;
+	outp.col.w *= oth.w;
 	outp.txc = inp.txc;
 
 	return outp;

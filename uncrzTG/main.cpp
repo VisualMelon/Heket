@@ -9197,7 +9197,7 @@ void addLaserSprite(int x, int y, DWORD dir)
 
 	while (curDist > 0.0f)
 	{
-		UNCRZ_sprite_data sd = UNCRZ_sprite_data(D3DXVECTOR4(rayPos.x + rayDir.x * curDist, rayPos.y + rayDir.y * curDist, rayPos.z + rayDir.z * curDist, 1), D3DXVECTOR4(0, 0, 0, 0));
+		UNCRZ_sprite_data sd = UNCRZ_sprite_data(D3DXVECTOR4(rayPos.x + rayDir.x * curDist, rayPos.y + rayDir.y * curDist, rayPos.z + rayDir.z * curDist, 1), D3DXVECTOR4(0, 0, 0, 1));
 		laserSprites.push_back(sd);
 		curDist -= 0.1f;
 	}
@@ -9213,7 +9213,7 @@ void addLaserSprite(int x, int y, DWORD dir)
 
 	while (curDist > distRes)
 	{
-		UNCRZ_sprite_data sd = UNCRZ_sprite_data(D3DXVECTOR4(rayPos.x + rayDir.x * curDist, rayPos.y + rayDir.y * curDist, rayPos.z + rayDir.z * curDist, 1), D3DXVECTOR4(0, 0, 0, 0));
+		UNCRZ_sprite_data sd = UNCRZ_sprite_data(D3DXVECTOR4(rayPos.x + rayDir.x * curDist, rayPos.y + rayDir.y * curDist, rayPos.z + rayDir.z * curDist, 1), D3DXVECTOR4(0, 0, 0, 1));
 		laserSprites.push_back(sd);
 		curDist -= 0.1f;
 	}
@@ -9824,6 +9824,8 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 					g_piece* mover = objs[g_seled];
 					if (x == mover->x && y == mover->y)
 						goto noGo;
+					if ((x == 0 && y == 7) || (x == 9 && y == 0))
+						goto noGo;
 					if (mover->type == g_PC_sphinx)
 						goto noGo;
 					if (abs(x - mover->x) > 1 || abs(y - mover->y) > 1)
@@ -9898,10 +9900,10 @@ void handleKeys()
 		//D3DXSaveTextureToFile("mehLight.bmp", D3DXIFF_BMP, lights[2]->lightTex, NULL);
 		//D3DXSaveTextureToFile("mehSun.bmp", D3DXIFF_BMP, lights[0]->lightTex, NULL);
 
-		D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
-		D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
-		D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
-		D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
+		//D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
+		//D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
+		//D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
+		//D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
 
 		g_align(0.0f, 0.0f, true);
 	}
@@ -9961,7 +9963,14 @@ void eval()
 	if (!takeInput())
 		return;
 
-	laserSprites.clear();
+	for (int i = laserSprites.size() - 1; i >= 0; i--)
+	{
+		laserSprites[i].other.w -= 0.1;
+		if (laserSprites[i].other.w <= 0)
+		{
+			laserSprites.erase(laserSprites.begin() + i, laserSprites.begin() + i);
+		}
+	}
 
 	handleKeys();
 
