@@ -55,6 +55,11 @@ model anubis
 flow 0
 
 motion a
+a offset one 0 0 0
+duration 1
+end motion
+
+motion b
 noupdate
 duration 10000
 end motion
@@ -100,6 +105,12 @@ model scarab
 flow 0
 
 motion a
+a offset one 0 0 0
+a colmod mirror 1 1 1 1
+duration 1
+end motion
+
+motion b
 noupdate
 duration 10000
 end motion
@@ -121,7 +132,6 @@ end motion
 
 motion b
 a offset_smth0 one 0 20 0
-a offset_smth0 mirror 0 20 0
 duration 250
 end motion
 
@@ -147,6 +157,11 @@ model sphinx
 flow 0
 
 motion a
+a offset one 0 0 0
+duration 1
+end motion
+
+motion b
 noupdate
 duration 10000
 end motion
@@ -194,6 +209,11 @@ model pharoh
 flow 0
 
 motion a
+a offset one 0 0 0
+duration 1
+end motion
+
+motion b
 noupdate
 duration 10000
 end motion
@@ -241,6 +261,12 @@ model pyramid
 flow 0
 
 motion a
+a offset one 0 0 0
+a colmod mirror 1 1 1 1
+duration 1
+end motion
+
+motion b
 noupdate
 duration 10000
 end motion
@@ -263,7 +289,6 @@ end motion
 
 motion b
 a offset_smth0 one 0 20 0
-a offset_smth0 mirror 0 20 0
 duration 250
 end motion
 

@@ -4819,8 +4819,9 @@ DWORD g_TM_none = 0;
 DWORD g_TM_red = 1;
 DWORD g_TM_silver = 2;
 
-D3DXVECTOR4 g_CL_silver(0.8, 0.8, 0.8, 0.90);
-D3DXVECTOR4 g_CL_red(1.0, 0.0, 0.0, 0.90);
+#define alphaness 0.9
+D3DXVECTOR4 g_CL_silver(0.8, 0.8, 0.8, alphaness);
+D3DXVECTOR4 g_CL_red(1.0, 0.0, 0.0, alphaness);
 
 int g_DR_up = 0;
 int g_DR_right = 1;
@@ -4839,6 +4840,20 @@ public:
 	UNCRZ_FBF_anim* idleAnim;
 	UNCRZ_FBF_anim* deathAnim;
 
+	void lightUp()
+	{
+		//model->sections[0]->colMod.w = 1.0;
+		offset.y = 1;
+		update(true);
+	}
+
+	void lightDown()
+	{
+		//model->sections[0]->colMod.w = alphaness;
+		offset.y = 0;
+		update(true);
+	}
+
 	void reset()
 	{
 		x = sx;
@@ -4851,6 +4866,8 @@ public:
 		else if (team == g_TM_silver)
 			model->sections[0]->colMod = g_CL_silver;
 		
+		offset.y = 0;
+
 		alive = true;
 		updateOffsetRot();
 		update(true);
@@ -9481,8 +9498,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						turner->dir = g_DR_left;
 
 						turner->updateOffsetRot();
-						turner->offset.y = 0;
-						turner->update(true);
+						turner->lightDown();
 						g_seled = -1;
 
 						g_endGo();
@@ -9492,8 +9508,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						turner->dir = g_DR_right;
 
 						turner->updateOffsetRot();
-						turner->offset.y = 0;
-						turner->update(true);
+						turner->lightDown();
 						g_seled = -1;
 
 						g_endGo();
@@ -9504,8 +9519,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					turner->dir = (turner->dir - 1) % 4;
 
 					turner->updateOffsetRot();
-					turner->offset.y = 0;
-					turner->update(true);
+					turner->lightDown();
 					g_seled = -1;
 
 					g_endGo();
@@ -9524,8 +9538,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						turner->dir = g_DR_up;
 
 						turner->updateOffsetRot();
-						turner->offset.y = 0;
-						turner->update(true);
+						turner->lightDown();
 						g_seled = -1;
 
 						g_endGo();
@@ -9535,8 +9548,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						turner->dir = g_DR_down;
 
 						turner->updateOffsetRot();
-						turner->offset.y = 0;
-						turner->update(true);
+						turner->lightDown();
 						g_seled = -1;
 
 						g_endGo();
@@ -9547,8 +9559,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					turner->dir = (turner->dir + 1) % 4;
 
 					turner->updateOffsetRot();
-					turner->offset.y = 0;
-					turner->update(true);
+					turner->lightDown();
 					g_seled = -1;
 
 					g_endGo();
@@ -9753,15 +9764,13 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 			taped = getTapedObj(&rayPos, &rayDir, &distRes, g_go);
 			if (g_seled != -1)
 			{
-				objs[g_seled]->offset.y = 0;
-				objs[g_seled]->update(true);
+				objs[g_seled]->lightDown();
 				g_seled = -1;
 			}
 			if (taped != -1)
 			{
 				g_seled = taped;
-				objs[g_seled]->offset.y = 1;
-				objs[g_seled]->update(true);
+				objs[g_seled]->lightUp();
 				
 				if (g_go == g_TM_red)
 				{
@@ -9837,8 +9846,7 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 					mover->y = y;
 
 					mover->updateOffsetRot();
-					mover->offset.y = 0;
-					mover->update(true);
+					mover->lightDown();
 					g_seled = -1;
 
 					g_endGo();
@@ -10578,7 +10586,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.top = 45;
 	rect.bottom = 500;
 	temp = new uiItem(dxDevice, "debugView", NULL, UIT_button, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &effects, &textures);
-	temp->enabled = false;
+	temp->enabled = true;
 	temp->clickable = false;
 	uiItems.push_back(temp);
 	temp->colMod = D3DXVECTOR4(0, 0.5, 1, 0.5);
@@ -11357,7 +11365,7 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 		// reset D3DRS_ZWRITEENABLE
 		dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
 
-		// while we still have acces to the ddat
+		// while we still have access to the ddat
 		ddat.nontimed(2, "CulledObjs: ", (float)ddat.cullCount / (float)(ddat.cullCount + ddat.drawCount), GDOF_prop100);
 
 
@@ -11431,7 +11439,7 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 
 		DEBUG_DX_FLUSH();
 		DEBUG_HR_END(&hrsbstart, &hrsbend, &hrdrawOverTime);
-
+		
 	}
 	else // if (disableOpenTarget)
 	{
@@ -11781,6 +11789,8 @@ void drawScene(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_view* view, DWO
 	}
 
 	dxDevice->EndScene();
+	
+	ddat->nontimed(2, "CulledObjs: ", (float)ddat->cullCount / (float)(ddat->cullCount + ddat->drawCount), GDOF_prop100);
 }
 
 void drawOver(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_over* over)
