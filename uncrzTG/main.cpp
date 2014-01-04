@@ -8568,7 +8568,7 @@ public:
 
 	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
 	{
-		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
 	}
 
 	void dirNormalAt(D3DXVECTOR3 camTarg)
@@ -8671,7 +8671,7 @@ public:
 
 	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
 	{
-		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
 	}
 };
 
@@ -9898,10 +9898,10 @@ void handleKeys()
 		//D3DXSaveTextureToFile("mehLight.bmp", D3DXIFF_BMP, lights[2]->lightTex, NULL);
 		//D3DXSaveTextureToFile("mehSun.bmp", D3DXIFF_BMP, lights[0]->lightTex, NULL);
 
-		//D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
-		//D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
-		//D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
-		//D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
+		D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
+		D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
+		D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
+		D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
 
 		g_align(0.0f, 0.0f, true);
 	}
@@ -10101,8 +10101,8 @@ LPDIRECT3DDEVICE9 initDevice(HWND hWnd)
 	dxPresParams.EnableAutoDepthStencil = TRUE;
 	dxPresParams.AutoDepthStencilFormat = D3DFMT_D16;
     dxPresParams.PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT;
-	dxPresParams.MultiSampleType = D3DMULTISAMPLE_4_SAMPLES;
-	//dxPresParams.MultiSampleType = D3DMULTISAMPLE_NONE;
+	dxPresParams.MultiSampleType = D3DMULTISAMPLE_NONE;
+	//dxPresParams.MultiSampleType = D3DMULTISAMPLE_4_SAMPLES;
 	
 	//dxPresParams.BackBufferWidth = 1600;
 	//dxPresParams.BackBufferHeight = 1200;
@@ -10113,7 +10113,7 @@ LPDIRECT3DDEVICE9 initDevice(HWND hWnd)
 	//dxPresParams.BackBufferWidth = 800;
 	//dxPresParams.BackBufferHeight = 600;
 
-	// fit buffers to size of screen (for testing only)
+	// fit buffers to size of screen (for testing only?)
 	RECT crect;
 	GetClientRect(mainHWnd, &crect);
 	dxPresParams.BackBufferWidth = crect.right - crect.left;// + 1;
@@ -11921,15 +11921,15 @@ void initTextures(LPDIRECT3DDEVICE9 dxDevice)
 	// side
 	D3DXCreateTexture(dxDevice, vp.Width * targetTexScale, vp.Height * targetTexScale, 0, D3DUSAGE_RENDERTARGET, D3DFMT_A8B8G8R8, D3DPOOL_DEFAULT, &sideTex);
 	sideTex->GetSurfaceLevel(0, &sideSurface);
-	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSideSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSideSurface, NULL);
 	
 	// target
 	D3DXCreateTexture(dxDevice, vp.Width * targetTexScale, vp.Height * targetTexScale, 0, D3DUSAGE_RENDERTARGET, D3DFMT_A8B8G8R8, D3DPOOL_DEFAULT, &targetTex);
 	targetTex->GetSurfaceLevel(0, &targetSurface);
-	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
 	
 	// light
-	dxDevice->CreateDepthStencilSurface(vp.Width * lightTexScale, vp.Height * lightTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zLightSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * lightTexScale, vp.Height * lightTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zLightSurface, NULL);
 
 	HRESULT res;
 	//res = D3DXCreateTextureFromFile(dxDevice, "ripples.tga", &ripplesTex);
