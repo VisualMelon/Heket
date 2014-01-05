@@ -4834,11 +4834,29 @@ public:
 	DWORD type;
 	DWORD team;
 
-	bool alive;
+	bool alive; // current
 	int x, y, dir;
-	int sx, sy, sdir;
+	int sx, sy, sdir; // starting
+	bool palive; // "pushed"
+	int px, py, pdir;
 	UNCRZ_FBF_anim* idleAnim;
 	UNCRZ_FBF_anim* deathAnim;
+
+	void pushState()
+	{
+		palive = alive;
+		px = x;
+		py = y;
+		pdir = dir;
+	}
+
+	void popState()
+	{
+		alive = palive;
+		x = px;
+		y = py;
+		dir = pdir;
+	}
 
 	void lightUp()
 	{
@@ -9419,6 +9437,102 @@ void g_startGame()
 	g_startGo();
 }
 
+bool g_canTurn(g_piece* turner, bool left)
+{
+	if (left)
+	{
+		if (turner->type == g_PC_sphinx)
+		{
+			if (turner->team == g_TM_red && turner->dir == g_DR_up)
+			{
+				return true;
+			}
+			if (turner->team == g_TM_silver && turner->dir == g_DR_down)
+			{
+				return true;
+			}
+		}
+		else
+		{
+			return true;
+		}
+	}
+	else
+	{
+		if (turner->type == g_PC_sphinx)
+		{
+			if (turner->team == g_TM_red && turner->dir == g_DR_left)
+			{
+				return true;
+			}
+			if (turner->team == g_TM_silver && turner->dir == g_DR_right)
+			{
+				return true;
+			}
+		}
+		else
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void g_performTurn(g_piece* turner, bool left)
+{
+	if (left)
+	{
+		turner->dir = (turner->dir - 1) % 4;
+
+		turner->updateOffsetRot();
+		turner->lightDown();
+	}
+	else
+	{
+		turner->dir = (turner->dir + 1) % 4;
+
+		turner->updateOffsetRot();
+		turner->lightDown();
+	}
+}
+
+bool g_canMove(g_piece* mover, int x, int y)
+{
+	if (x == mover->x && y == mover->y)
+		return false;
+	if ((x == 0 && y == 7) || (x == 9 && y == 0))
+		return false;
+	if (mover->type == g_PC_sphinx)
+		return false;
+	if (abs(x - mover->x) > 1 || abs(y - mover->y) > 1)
+		return false;
+	if (mover->type != g_PC_scarab && getOccupier(x, y) != -1)
+		return false;
+	if (getCellTeam(x, y) != g_TM_none && getCellTeam(x, y) != mover->team)
+		return false;
+
+	return true;
+}
+
+void g_performMove(g_piece* mover, int x, int y)
+{
+	if (mover->type == g_PC_scarab && getOccupier(x, y) != -1)
+	{
+		g_piece* moved = objs[getOccupier(x, y)];
+		moved->x = mover->x;
+		moved->y = mover->y;
+		moved->updateOffsetRot();
+		moved->update(true);
+	}
+
+	mover->x = x;
+	mover->y = y;
+
+	mover->updateOffsetRot();
+	mover->lightDown();
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	float sx, sy;
@@ -9491,37 +9605,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if (g_seled != -1)
 			{
 				g_piece* turner = objs[g_seled];
-				if (turner->type == g_PC_sphinx)
+				if (g_canTurn(turner, true))
 				{
-					if (turner->team == g_TM_red && turner->dir == g_DR_up)
-					{
-						turner->dir = g_DR_left;
-
-						turner->updateOffsetRot();
-						turner->lightDown();
-						g_seled = -1;
-
-						g_endGo();
-					}
-					if (turner->team == g_TM_silver && turner->dir == g_DR_down)
-					{
-						turner->dir = g_DR_right;
-
-						turner->updateOffsetRot();
-						turner->lightDown();
-						g_seled = -1;
-
-						g_endGo();
-					}
-				}
-				else
-				{
-					turner->dir = (turner->dir - 1) % 4;
-
-					turner->updateOffsetRot();
-					turner->lightDown();
+					g_performTurn(turner, true);
 					g_seled = -1;
-
 					g_endGo();
 				}
 			}
@@ -9531,37 +9618,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if (g_seled != -1)
 			{
 				g_piece* turner = objs[g_seled];
-				if (turner->type == g_PC_sphinx)
+				if (g_canTurn(turner, false))
 				{
-					if (turner->team == g_TM_red && turner->dir == g_DR_left)
-					{
-						turner->dir = g_DR_up;
-
-						turner->updateOffsetRot();
-						turner->lightDown();
-						g_seled = -1;
-
-						g_endGo();
-					}
-					if (turner->team == g_TM_silver && turner->dir == g_DR_right)
-					{
-						turner->dir = g_DR_down;
-
-						turner->updateOffsetRot();
-						turner->lightDown();
-						g_seled = -1;
-
-						g_endGo();
-					}
-				}
-				else
-				{
-					turner->dir = (turner->dir + 1) % 4;
-
-					turner->updateOffsetRot();
-					turner->lightDown();
+					g_performTurn(turner, false);
 					g_seled = -1;
-
 					g_endGo();
 				}
 			}
@@ -9822,7 +9882,13 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 				if (getTapedPos(&rayPos, &rayDir, &x, &y))
 				{
 					g_piece* mover = objs[g_seled];
-					if (x == mover->x && y == mover->y)
+					if (g_canMove(mover, x, y))
+					{
+						g_performMove(mover, x, y);
+						g_seled = -1;
+						g_endGo();
+					}
+					/*if (x == mover->x && y == mover->y)
 						goto noGo;
 					if ((x == 0 && y == 7) || (x == 9 && y == 0))
 						goto noGo;
@@ -9851,8 +9917,8 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 					mover->lightDown();
 					g_seled = -1;
 
-					g_endGo();
-noGo:
+					g_endGo();*/
+//noGo:
 					break;
 				}
 			}
