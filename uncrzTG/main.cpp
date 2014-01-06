@@ -9127,7 +9127,7 @@ int getOccupier(int x, int y)
 int getTapedObj(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, float* distRes, DWORD teamOnly = g_TM_none)
 {
 	int best = -1;
-	float bestDist;
+	float bestDist = -1;
 	float localDistRes = 0.0;
 
 	for (int i = objs.size() - 1; i >= 0; i--)
@@ -9293,7 +9293,7 @@ restart:
 			{
 				if ((piece->dir + 2) % 4 == dir)
 				{
-					dir = (dir - 1) % 4;
+					dir = (dir + 3) % 4;
 					goto restart;
 				}
 				else if ((piece->dir + 3) % 4 == dir)
@@ -9313,7 +9313,7 @@ restart:
 				}
 				else if ((piece->dir + 3) % 4 == dir)
 				{
-					dir = (dir - 1) % 4;
+					dir = (dir + 3) % 4;
 					goto restart;
 				}
 				else if ((piece->dir + 0) % 4 == dir)
@@ -9323,7 +9323,7 @@ restart:
 				}
 				else if ((piece->dir + 1) % 4 == dir)
 				{
-					dir = (dir - 1) % 4;
+					dir = (dir + 3) % 4;
 					goto restart;
 				}
 			}
@@ -9483,17 +9483,11 @@ void g_performTurn(g_piece* turner, bool left)
 {
 	if (left)
 	{
-		turner->dir = (turner->dir - 1) % 4;
-
-		turner->updateOffsetRot();
-		turner->lightDown();
+		turner->dir = (turner->dir + 3) % 4; // beware negatives
 	}
 	else
 	{
 		turner->dir = (turner->dir + 1) % 4;
-
-		turner->updateOffsetRot();
-		turner->lightDown();
 	}
 }
 
@@ -9528,9 +9522,6 @@ void g_performMove(g_piece* mover, int x, int y)
 
 	mover->x = x;
 	mover->y = y;
-
-	mover->updateOffsetRot();
-	mover->lightDown();
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -9608,6 +9599,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				if (g_canTurn(turner, true))
 				{
 					g_performTurn(turner, true);
+					turner->updateOffsetRot();
+					turner->lightDown();
 					g_seled = -1;
 					g_endGo();
 				}
@@ -9621,6 +9614,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				if (g_canTurn(turner, false))
 				{
 					g_performTurn(turner, false);
+					turner->updateOffsetRot();
+					turner->lightDown();
 					g_seled = -1;
 					g_endGo();
 				}
@@ -9885,6 +9880,8 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 					if (g_canMove(mover, x, y))
 					{
 						g_performMove(mover, x, y);
+						mover->updateOffsetRot();
+						mover->lightDown();
 						g_seled = -1;
 						g_endGo();
 					}
