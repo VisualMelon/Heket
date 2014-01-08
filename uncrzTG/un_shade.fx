@@ -113,6 +113,7 @@ Texture tex;
 sampler texSampler = sampler_state { texture = <tex>;magfilter = NONE; minfilter = NONE; mipfilter = NONE; AddressU = mirror; AddressV = mirror;}; // no linear 
 sampler texBorderSampler = sampler_state { texture = <tex>;magfilter = NONE; minfilter = NONE; mipfilter = NONE; AddressU = border; AddressV = border; BorderColor = 0x00000000;}; // border
 sampler texLinearSampler = sampler_state { texture = <tex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = mirror; AddressV = mirror;}; // linear 
+sampler texLinearBorderSampler = sampler_state { texture = <tex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = border; AddressV = border; BorderColor = 0x00000000;}; // linear 
 float4 texData; // (offX, offY,) mulX, mulY
 
 float4x4 vpMat;

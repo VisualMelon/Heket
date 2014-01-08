@@ -8236,10 +8236,20 @@ public:
 	{
 		return y * invScaleY + centreY;
 	}
+
+	float wToScreen(float w)
+	{
+		return w * scaleX;
+	}
+
+	float hToScreen(float h)
+	{
+		return h * -scaleY;
+	}
 };
 
 // ui item types
-const DWORD UIT_blank = 0;
+const DWORD UIT_blank = 0; // no behaviour defined
 const DWORD UIT_text = 1;
 const DWORD UIT_button = 2;
 
@@ -8247,6 +8257,24 @@ const DWORD UIT_button = 2;
 const DWORD UIA_leftclick = 1;
 const DWORD UIA_rightclick = 2;
 const DWORD UIA_mousemove = 3;
+
+// tex alignment and modes (2 bits of horizontal, 2 bits for verticle)
+const DWORD TXA_horizontal = 3;
+const DWORD TXA_fillh = 0;
+const DWORD TXA_left = 1;
+const DWORD TXA_right = 2;
+const DWORD TXA_center = 3;
+
+const DWORD TXA_verticle = 12;
+const DWORD TXA_fillv = 0;
+const DWORD TXA_top = 4;
+const DWORD TXA_bottom = 8;
+const DWORD TXA_middle = 12;
+
+const DWORD TXM_fit = 1; // rejects alignment
+const DWORD TXM_zoom = 2; // requires image dimensions, fits inside box
+const DWORD TXM_flat = 3; // requires image dimensions, no scaling
+
 
 struct uiItem
 {
@@ -8278,6 +8306,11 @@ public:
 	std::string text;
 	DWORD textAlign;
 
+	float texW;
+	float texH;
+	DWORD texAlign;
+	DWORD texMode;
+
 	std::vector<uiItem*> uiItems;
 	uiItem* parent;
 
@@ -8294,6 +8327,12 @@ public:
 	// vertexDecN must be vertexPecPCT
 	uiItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, DWORD itemTypeN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
 	{
+		texMode = TXM_fit; // cheapest, doesn't need to know image dimensions, probably what everyone wants
+		texAlign = TXA_fillh | TXA_fillv; // (0)
+
+		texW = -1; // means to assume we don't have this data (may be ignored)
+		texH = -1;
+
 		zeroIsh();
 		useTex = true;
 
@@ -8412,10 +8451,136 @@ public:
 		float top = vt->yToScreen(rect.top + offsetY);
 		float bottom = vt->yToScreen(rect.bottom + offsetY);
 
-		verts[0] = vertexPCT(vertexPC(left, top, 0, 1, 1, 1, -1), 0, 0); // negative tti means ignore tti
-		verts[1] = vertexPCT(vertexPC(right, top, 0, 1, 1, 1, -1), 1, 0);
-		verts[2] = vertexPCT(vertexPC(left, bottom, 0, 1, 1, 1, -1), 0, 1);
-		verts[3] = vertexPCT(vertexPC(right, bottom, 0, 1, 1, 1, -1), 1, 1);
+		float tleft, tright, ttop, tbottom;
+
+		if (texMode == TXM_fit)
+		{
+			// skip to answers
+			tleft = 0;
+			tright = 1;
+			ttop = 0;
+			tbottom = 1;
+		}
+		else if (texMode == TXM_flat || texMode == TXM_zoom)
+		{
+			float bw = right - left;
+			float bh = top - bottom;
+			float tw = vt->wToScreen(texW);
+			float th = vt->hToScreen(texH);
+			float sw = tw / bw; // suitably scaled
+			float sh = th / bh;
+
+			DWORD tah = texAlign & TXA_horizontal;
+			DWORD tav = texAlign & TXA_verticle;
+
+			// zoomness
+			if (texMode == TXM_zoom)
+			{
+				if (sw > sh)
+				{
+					sw = 1.0f;
+					sh /= sw;
+				}
+				else
+				{
+					sw /= sh;
+					sh = 1.0f;
+				}
+			}
+
+			switch (tah)
+			{
+				case TXA_fillh:
+					tleft = 0;
+					tright = 1;
+					break;
+				case TXA_left:
+					tleft = 0;
+					tright = sw;
+					break;
+				case TXA_right:
+					tleft = 1.0f - sw;
+					tright = 1;
+					break;
+				case TXA_center:
+					tleft = 0.5f - sw * 0.5;
+					tright = 0.5f + sw * 0.5;
+					break;
+			}
+
+			switch (tav)
+			{
+				case TXA_fillv:
+					ttop = 0;
+					tbottom = 1;
+					break;
+				case TXA_top:
+					ttop = 0;
+					tbottom = sh;
+					break;
+				case TXA_bottom:
+					ttop = 1.0f - sh;
+					tbottom = 1;
+					break;
+				case TXA_middle:
+					ttop = 0.5f - sh * 0.5;
+					tbottom = 0.5f + sh * 0.5;
+					break;
+			}
+
+			// tcoords descirbe where the image should be, need to transform
+			
+			float tsx = 1.0 / (tright - tleft);
+			float tsy = 1.0 / (tbottom - ttop);
+
+			tleft = 0 - tleft * tsx;
+			tright = 1.0f + (1.0f - tright) * tsx;
+			ttop = 0 - ttop * tsy;
+			tbottom = 1.0f + (1.0f - tbottom) * tsy;
+		}
+
+		verts[0] = vertexPCT(vertexPC(left, top, 0, 1, 1, 1, -1), tleft, ttop); // negative tti means ignore tti
+		verts[1] = vertexPCT(vertexPC(right, top, 0, 1, 1, 1, -1), tright, ttop);
+		verts[2] = vertexPCT(vertexPC(left, bottom, 0, 1, 1, 1, -1), tleft, tbottom);
+		verts[3] = vertexPCT(vertexPC(right, bottom, 0, 1, 1, 1, -1), tright, tbottom);
+
+		if (texW == -1)
+		{
+			// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
+			D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / (float)(rect.right - rect.left + 1), 0.5 / (float)(rect.bottom - rect.top + 1), 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
+			effect.setTextureData((float*)&texData.x);
+			
+			for (int i = 0; i < 4; i++) // do ahead of shader
+			{
+				verts[i].tu += texData.x;
+				verts[i].tv += texData.y;
+			}
+			// end of stuff that might need revising
+		}
+		else if (texW == -1)
+		{
+			// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
+			D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / (float)vt->bbuffWidth, 0.5 / (float)vt->bbuffHeight, 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
+			effect.setTextureData((float*)&texData.x);
+			
+			for (int i = 0; i < 4; i++) // do ahead of shader
+			{
+				verts[i].tu += texData.x;
+				verts[i].tv += texData.y;
+			}
+			// end of stuff that might need revising
+		}
+		else
+		{
+			D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / texW, 0.5 / texH, 1.0 / texW, 1.0 / texH);
+			effect.setTextureData((float*)&texData.x);
+			
+			for (int i = 0; i < 4; i++) // do ahead of shader
+			{
+				verts[i].tu += texData.x;
+				verts[i].tv += texData.y;
+			}
+		}
 
 		dxDevice->SetVertexDeclaration(vertexDec);
 		effect.setTechnique(tech);
@@ -10270,6 +10435,22 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	temp->clickable = false;
 	temp->textAlign = DT_CENTER | DT_VCENTER;
 	bannerText = temp;
+
+	// testness
+	//rect.left = 0;
+	//rect.right = winWidth + 1;
+	//rect.top = 40;
+	//rect.bottom = winHeight + 1;
+	//temp = new uiItem(dxDevice, "testness", NULL, UIT_button, vertexDecPCT, "un_shade.fx", "simpleUi", "white.tga", rect, &effects, &textures);
+	//temp->enabled = true; // NEED to work out why these shaders are so whiney (simpleUi uses linear sampler, can't do linear sample on render target?)
+	//temp->clickable = false;
+	//uiItems.push_back(temp);
+	//temp->colMod = D3DXVECTOR4(1, 1, 1, 1);
+	//temp->texH = 50;
+	//temp->texW = 50;
+	//temp->texMode = TXM_flat;
+	//temp->texAlign = TXA_left | TXA_top;
+	//mainView = temp;
 
 	// debug view
 	rect.left = 175;

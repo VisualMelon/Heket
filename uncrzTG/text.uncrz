@@ -618,7 +618,7 @@ end seg // grid
 
 seg red
 
-offset 0 -2000 0
+offset 0 -500 0
 rotation 0 0 0
 
 
@@ -627,7 +627,7 @@ end seg // red
 
 seg silver
 
-offset 0 -2000 0
+offset 0 -500 0
 rotation 0 0 0
 
 
@@ -24042,7 +24042,7 @@ end seg // one
 
 seg mirror
 
-offset 0 -2000 0
+offset 0 -500 0
 rotation 0 0 0
 
 
@@ -52450,7 +52450,7 @@ end seg // one
 
 seg mirror
 
-offset 0 -2000 0
+offset 0 -500 0
 rotation 0 0 0
 
 
