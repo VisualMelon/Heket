@@ -440,6 +440,14 @@ VS_Output_Tex VShade_Ui(VS_Input_Tex inp)
 PS_Output PShade_Ui(VS_Output_Tex inp)
 {
 	PS_Output outp = (PS_Output)0;
+	outp.col = inp.col * tex2D(texLinearSampler, inp.txc) * colMod;
+
+	return outp;
+}
+
+PS_Output PShade_Ui_Border(VS_Output_Tex inp)
+{
+	PS_Output outp = (PS_Output)0;
 	outp.col = inp.col * tex2D(texLinearBorderSampler, inp.txc) * colMod;
 
 	return outp;
@@ -1788,6 +1796,15 @@ technique simpleUi
 	{
 		VertexShader = compile vs_2_0 VShade_Ui();
 		PixelShader = compile ps_2_0 PShade_Ui();
+	}
+}
+
+technique simpleUiBorder
+{
+	pass unlit
+	{
+		VertexShader = compile vs_2_0 VShade_Ui();
+		PixelShader = compile ps_2_0 PShade_Ui_Border();
 	}
 }
 

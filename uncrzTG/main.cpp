@@ -8273,6 +8273,8 @@ const DWORD TXA_middle = 12;
 
 const DWORD TXA_offsetInset = 16;
 
+const DWORD TXA_pixelOffset = 32;
+
 // tex modes
 const DWORD TXM_fit = 1; // rejects alignment, and everything else really, SIMPLE and CHEAP
 const DWORD TXM_zoom = 2; // requires image dimensions, fits inside box
@@ -8572,56 +8574,35 @@ public:
 		verts[2] = vertexPCT(vertexPC(left, bottom, 0, 1, 1, 1, -1), tleft, tbottom);
 		verts[3] = vertexPCT(vertexPC(right, bottom, 0, 1, 1, 1, -1), tright, tbottom);
 
-		if (texW == -1)
+		if (texAlign & TXA_pixelOffset)
 		{
-			// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
-			D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / (float)(rect.right - rect.left + 1), 0.5 / (float)(rect.bottom - rect.top + 1), 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
-			effect.setTextureData((float*)&texData.x);
-			
-			for (int i = 0; i < 4; i++) // do ahead of shader
+			if (texW == -1 || texH == -1)
 			{
-				verts[i].tu += texData.x;
-				verts[i].tv += texData.y;
+				// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
+				D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / (float)(rect.right - rect.left + 1), 0.5 / (float)(rect.bottom - rect.top + 1), 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
+				effect.setTextureData((float*)&texData.x);
+				
+				for (int i = 0; i < 4; i++) // do ahead of shader
+				{
+					verts[i].tu += texData.x;
+					verts[i].tv += texData.y;
+				}
+				// end of stuff that might need revising
 			}
-			// end of stuff that might need revising
-		}
-		else if (texW == -1)
-		{
-			// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
-			D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / (float)vt->bbuffWidth, 0.5 / (float)vt->bbuffHeight, 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
-			effect.setTextureData((float*)&texData.x);
-			
-			for (int i = 0; i < 4; i++) // do ahead of shader
+			else
 			{
-				verts[i].tu += texData.x;
-				verts[i].tv += texData.y;
+				// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
+				D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / texW, 0.5 / texH, 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
+				effect.setTextureData((float*)&texData.x);
+				
+				for (int i = 0; i < 4; i++) // do ahead of shader
+				{
+					verts[i].tu += texData.x;
+					verts[i].tv += texData.y;
+				}
+				// end of stuff that might need revising
 			}
-			// end of stuff that might need revising
 		}
-		else
-		{
-			// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
-			D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / (float)vt->bbuffWidth, 0.5 / (float)vt->bbuffHeight, 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
-			effect.setTextureData((float*)&texData.x);
-			
-			for (int i = 0; i < 4; i++) // do ahead of shader
-			{
-				verts[i].tu += texData.x;
-				verts[i].tv += texData.y;
-			}
-			// end of stuff that might need revising
-		}
-		//else
-		//{
-		//	D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / texW, 0.5 / texH, 1.0 / texW, 1.0 / texH);
-		//	effect.setTextureData((float*)&texData.x);
-		//	
-		//	for (int i = 0; i < 4; i++) // do ahead of shader
-		//	{
-		//		verts[i].tu += texData.x;
-		//		verts[i].tv += texData.y;
-		//	}
-		//}
 
 		dxDevice->SetVertexDeclaration(vertexDec);
 		effect.setTechnique(tech);
@@ -10456,6 +10437,9 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	temp->clickable = true;
 	uiItems.push_back(temp);
 	temp->colMod = D3DXVECTOR4(1, 1, 1, 1);
+	temp->texAlign = TXA_pixelOffset;
+	temp->texW = vp.Width;
+	temp->texH = vp.Height;
 	mainView = temp;
 
 	rect.left = 0;
@@ -10482,18 +10466,17 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = winWidth;// + 1;
 	rect.top = 40;
 	rect.bottom = winHeight;// + 1;
-	temp = new uiItem(dxDevice, "testness", NULL, UIT_button, vertexDecPCT, "un_shade.fx", "simpleUi", "white.tga", rect, &effects, &textures);
-	temp->enabled = true;
+	temp = new uiItem(dxDevice, "testness", NULL, UIT_button, vertexDecPCT, "un_shade.fx", "simpleUiBorder", "white_bordered.tga", rect, &effects, &textures);
+	temp->enabled = false;
 	temp->clickable = false;
 	uiItems.push_back(temp);
 	temp->colMod = D3DXVECTOR4(1, 1, 1, 1);
-	temp->texH = 50;
-	temp->texW = 50;
+	temp->texH = 65;
+	temp->texW = 65;
 	temp->texMode = TXM_flat;
-	temp->texAlign = TXA_fillh | TXA_top | TXA_offsetInset;
-	temp->texScaleX = 2.0f;
-	temp->texScaleY = 2.0f;
-	temp->texVAlignOffset = 1.0;
+	temp->texAlign = TXA_left | TXA_bottom | TXA_offsetInset;
+	temp->texScaleX = 5.0f;
+	temp->texScaleY = 1.0f;
 
 	// debug view
 	rect.left = 175;
