@@ -8258,7 +8258,7 @@ const DWORD UIA_leftclick = 1;
 const DWORD UIA_rightclick = 2;
 const DWORD UIA_mousemove = 3;
 
-// tex alignment and modes (2 bits of horizontal, 2 bits for verticle)
+// tex alignment and modes (2 bits of horizontal, 2 bits for verticle, 1 bits for other stuff)
 const DWORD TXA_horizontal = 3;
 const DWORD TXA_fillh = 0;
 const DWORD TXA_left = 1;
@@ -8271,10 +8271,12 @@ const DWORD TXA_top = 4;
 const DWORD TXA_bottom = 8;
 const DWORD TXA_middle = 12;
 
-const DWORD TXM_fit = 1; // rejects alignment
+const DWORD TXA_offsetInset = 16;
+
+// tex modes
+const DWORD TXM_fit = 1; // rejects alignment, and everything else really, SIMPLE and CHEAP
 const DWORD TXM_zoom = 2; // requires image dimensions, fits inside box
 const DWORD TXM_flat = 3; // requires image dimensions, no scaling
-
 
 struct uiItem
 {
@@ -8308,8 +8310,12 @@ public:
 
 	float texW;
 	float texH;
+	float texScaleX;
+	float texScaleY;
 	DWORD texAlign;
 	DWORD texMode;
+	float texHAlignOffset; // flex only
+	float texVAlignOffset;
 
 	std::vector<uiItem*> uiItems;
 	uiItem* parent;
@@ -8327,11 +8333,15 @@ public:
 	// vertexDecN must be vertexPecPCT
 	uiItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, DWORD itemTypeN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
 	{
-		texMode = TXM_fit; // cheapest, doesn't need to know image dimensions, probably what everyone wants
-		texAlign = TXA_fillh | TXA_fillv; // (0)
-
 		texW = -1; // means to assume we don't have this data (may be ignored)
 		texH = -1;
+
+		texMode = TXM_fit; // cheapest, doesn't need to know image dimensions, probably what everyone wants
+		texAlign = TXA_fillh | TXA_fillv; // (0)
+		texScaleX = 1.0f;
+		texScaleY = 1.0f;
+		texHAlignOffset = 0.0f;
+		texVAlignOffset = 0.0f;
 
 		zeroIsh();
 		useTex = true;
@@ -8465,10 +8475,23 @@ public:
 		{
 			float bw = right - left;
 			float bh = top - bottom;
-			float tw = vt->wToScreen(texW);
-			float th = vt->hToScreen(texH);
+			float tw = vt->wToScreen(texW) * texScaleX;
+			float th = vt->hToScreen(texH) * texScaleY;
 			float sw = tw / bw; // suitably scaled
 			float sh = th / bh;
+
+			float hao;
+			float vao;
+			if (texAlign & TXA_offsetInset)
+			{ // 0 - 1 is like left - right or top - bottom
+				hao = texHAlignOffset * (1.0f - sw);
+				vao = texVAlignOffset * (1.0f - sh);
+			}
+			else
+			{ // 0 - 1 is like left - right or top - bottom from the topleft corner
+				hao = texHAlignOffset;
+				vao = texVAlignOffset;
+			}
 
 			DWORD tah = texAlign & TXA_horizontal;
 			DWORD tav = texAlign & TXA_verticle;
@@ -8528,10 +8551,15 @@ public:
 					break;
 			}
 
-			// tcoords descirbe where the image should be, need to transform
+			// tcoords describe where the image should be, need to transform
 			
 			float tsx = 1.0 / (tright - tleft);
 			float tsy = 1.0 / (tbottom - ttop);
+
+			tleft += hao;
+			tright += hao;
+			ttop += vao;
+			tbottom += vao;
 
 			tleft = 0 - tleft * tsx;
 			tright = 1.0f + (1.0f - tright) * tsx;
@@ -8572,7 +8600,8 @@ public:
 		}
 		else
 		{
-			D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / texW, 0.5 / texH, 1.0 / texW, 1.0 / texH);
+			// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
+			D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / (float)vt->bbuffWidth, 0.5 / (float)vt->bbuffHeight, 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
 			effect.setTextureData((float*)&texData.x);
 			
 			for (int i = 0; i < 4; i++) // do ahead of shader
@@ -8580,7 +8609,19 @@ public:
 				verts[i].tu += texData.x;
 				verts[i].tv += texData.y;
 			}
+			// end of stuff that might need revising
 		}
+		//else
+		//{
+		//	D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / texW, 0.5 / texH, 1.0 / texW, 1.0 / texH);
+		//	effect.setTextureData((float*)&texData.x);
+		//	
+		//	for (int i = 0; i < 4; i++) // do ahead of shader
+		//	{
+		//		verts[i].tu += texData.x;
+		//		verts[i].tv += texData.y;
+		//	}
+		//}
 
 		dxDevice->SetVertexDeclaration(vertexDec);
 		effect.setTechnique(tech);
@@ -8751,7 +8792,7 @@ public:
 
 	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
 	{
-		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
 	}
 
 	void dirNormalAt(D3DXVECTOR3 camTarg)
@@ -8854,7 +8895,7 @@ public:
 
 	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
 	{
-		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
 	}
 };
 
@@ -10339,7 +10380,7 @@ LPDIRECT3DDEVICE9 initDevice(HWND hWnd)
 	dxPresParams.AutoDepthStencilFormat = D3DFMT_D16;
     dxPresParams.PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT;
 	dxPresParams.MultiSampleType = D3DMULTISAMPLE_NONE;
-	//dxPresParams.MultiSampleType = D3DMULTISAMPLE_4_SAMPLES;
+	dxPresParams.MultiSampleType = D3DMULTISAMPLE_4_SAMPLES;
 	
 	//dxPresParams.BackBufferWidth = 1600;
 	//dxPresParams.BackBufferHeight = 1200;
@@ -10407,9 +10448,9 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 
 	// (view one view)
 	rect.left = 0;
-	rect.right = winWidth + 1;
+	rect.right = winWidth;// + 1;
 	rect.top = 0;
-	rect.bottom = winHeight + 1;
+	rect.bottom = winHeight;// + 1;
 	temp = new uiItem(dxDevice, "mainover", NULL, UIT_button, vertexDecPCT, "un_shade.fx", "over_final", "over_main", rect, &effects, &textures);
 	temp->enabled = true; // NEED to work out why these shaders are so whiney (simpleUi uses linear sampler, can't do linear sample on render target?)
 	temp->clickable = true;
@@ -10418,7 +10459,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	mainView = temp;
 
 	rect.left = 0;
-	rect.right = winWidth + 1;
+	rect.right = winWidth;// + 1;
 	rect.top = 0;
 	rect.bottom = 40;
 	temp = new uiItem(dxDevice, "banner", mainView, UIT_button, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/banner.tga", rect, &effects, &textures);
@@ -10437,20 +10478,22 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	bannerText = temp;
 
 	// testness
-	//rect.left = 0;
-	//rect.right = winWidth + 1;
-	//rect.top = 40;
-	//rect.bottom = winHeight + 1;
-	//temp = new uiItem(dxDevice, "testness", NULL, UIT_button, vertexDecPCT, "un_shade.fx", "simpleUi", "white.tga", rect, &effects, &textures);
-	//temp->enabled = true; // NEED to work out why these shaders are so whiney (simpleUi uses linear sampler, can't do linear sample on render target?)
-	//temp->clickable = false;
-	//uiItems.push_back(temp);
-	//temp->colMod = D3DXVECTOR4(1, 1, 1, 1);
-	//temp->texH = 50;
-	//temp->texW = 50;
-	//temp->texMode = TXM_flat;
-	//temp->texAlign = TXA_left | TXA_top;
-	//mainView = temp;
+	rect.left = 0;
+	rect.right = winWidth;// + 1;
+	rect.top = 40;
+	rect.bottom = winHeight;// + 1;
+	temp = new uiItem(dxDevice, "testness", NULL, UIT_button, vertexDecPCT, "un_shade.fx", "simpleUi", "white.tga", rect, &effects, &textures);
+	temp->enabled = true;
+	temp->clickable = false;
+	uiItems.push_back(temp);
+	temp->colMod = D3DXVECTOR4(1, 1, 1, 1);
+	temp->texH = 50;
+	temp->texW = 50;
+	temp->texMode = TXM_flat;
+	temp->texAlign = TXA_fillh | TXA_top | TXA_offsetInset;
+	temp->texScaleX = 2.0f;
+	temp->texScaleY = 2.0f;
+	temp->texVAlignOffset = 1.0;
 
 	// debug view
 	rect.left = 175;
@@ -12174,15 +12217,15 @@ void initTextures(LPDIRECT3DDEVICE9 dxDevice)
 	// side
 	D3DXCreateTexture(dxDevice, vp.Width * targetTexScale, vp.Height * targetTexScale, 0, D3DUSAGE_RENDERTARGET, D3DFMT_A8B8G8R8, D3DPOOL_DEFAULT, &sideTex);
 	sideTex->GetSurfaceLevel(0, &sideSurface);
-	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSideSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSideSurface, NULL);
 	
 	// target
 	D3DXCreateTexture(dxDevice, vp.Width * targetTexScale, vp.Height * targetTexScale, 0, D3DUSAGE_RENDERTARGET, D3DFMT_A8B8G8R8, D3DPOOL_DEFAULT, &targetTex);
 	targetTex->GetSurfaceLevel(0, &targetSurface);
-	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
 	
 	// light
-	dxDevice->CreateDepthStencilSurface(vp.Width * lightTexScale, vp.Height * lightTexScale, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, TRUE, &zLightSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * lightTexScale, vp.Height * lightTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zLightSurface, NULL);
 
 	HRESULT res;
 	//res = D3DXCreateTextureFromFile(dxDevice, "ripples.tga", &ripplesTex);

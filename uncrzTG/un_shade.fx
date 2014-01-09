@@ -440,7 +440,7 @@ VS_Output_Tex VShade_Ui(VS_Input_Tex inp)
 PS_Output PShade_Ui(VS_Output_Tex inp)
 {
 	PS_Output outp = (PS_Output)0;
-	outp.col = inp.col * tex2D(texLinearSampler, inp.txc) * colMod;
+	outp.col = inp.col * tex2D(texLinearBorderSampler, inp.txc) * colMod;
 
 	return outp;
 }
