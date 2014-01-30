@@ -8258,7 +8258,7 @@ const DWORD UIA_leftclick = 1;
 const DWORD UIA_rightclick = 2;
 const DWORD UIA_mousemove = 3;
 
-// tex alignment and modes (2 bits of horizontal, 2 bits for verticle, 1 bits for other stuff)
+// tex alignment and modes (2 bits of horizontal, 2 bits for verticle, 2 bits for other stuff)
 const DWORD TXA_horizontal = 3;
 const DWORD TXA_fillh = 0;
 const DWORD TXA_left = 1;
@@ -8322,6 +8322,10 @@ public:
 	std::vector<uiItem*> uiItems;
 	uiItem* parent;
 
+	// clc - this is stuff that is calculated in update()
+	DWORD clcRect;
+	// end clc
+
 	void zeroIsh()
 	{
 		useTex = false;
@@ -8351,7 +8355,8 @@ public:
 		name = nameN;
 		parent = parentN;
 		if (parent != NULL)
-			parent->uiItems.push_back(this);
+			p
+			arent->uiItems.push_back(this);
 		enabled = false;
 		effect = createEffect(dxDevice, effectFileName, VX_PCT, effectFileName, effectList);
 		tech = effect.effect->GetTechniqueByName(techName);
