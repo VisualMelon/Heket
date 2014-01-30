@@ -8323,7 +8323,13 @@ public:
 	uiItem* parent;
 
 	// clc - this is stuff that is calculated in update()
-	DWORD clcRect;
+	RECT clcRect;
+
+	RECT clcTextRect;
+
+	vertexPCT clcTexVerts[4];
+	D3DXVECTOR4 clcTexData;
+	bool clcUseTexData;
 	// end clc
 
 	void zeroIsh()
@@ -8355,8 +8361,7 @@ public:
 		name = nameN;
 		parent = parentN;
 		if (parent != NULL)
-			p
-			arent->uiItems.push_back(this);
+			parent->uiItems.push_back(this);
 		enabled = false;
 		effect = createEffect(dxDevice, effectFileName, VX_PCT, effectFileName, effectList);
 		tech = effect.effect->GetTechniqueByName(techName);
@@ -8401,14 +8406,14 @@ public:
 			effect.setTexture3(tex3);
 	}
 
-	bool getTaped(float x, float y, float offsetX, float offsetY, uiItem** tapedOut, float* xOut, float* yOut)
+	bool getTaped(float x, float y, uiItem** tapedOut, float* xOut, float* yOut)
 	{
-		if (x >= rect.left + offsetX && x <= rect.right + offsetX && y >= rect.top + offsetY && y <= rect.bottom + offsetY)
+		if (x >= clcRect.left && x <= clcRect.right && y >= clcRect.top && y <= clcRect.bottom)
 		{
 			// check children
 			for each (uiItem* uii in uiItems)
 			{
-				if (uii->enabled && uii->getTaped(x, y, offsetX + rect.left, offsetY + rect.top, tapedOut, xOut, yOut))
+				if (uii->enabled && uii->getTaped(x, y, tapedOut, xOut, yOut))
 				{
 					return true; // stop on the first child to be taped
 				}
@@ -8417,8 +8422,8 @@ public:
 			if (clickable)
 			{
 				// no children taped, return me
-				*xOut = x - (rect.left + offsetX);
-				*yOut = y - (rect.top + offsetY);
+				*xOut = x - clcRect.left;
+				*yOut = y - clcRect.top;
 				*tapedOut = this;
 				return true;
 			}
@@ -8427,46 +8432,72 @@ public:
 		return false;
 	}
 
-	void draw(LPDIRECT3DDEVICE9 dxDevice, float offsetX, float offsetY, viewTrans* vt)
+	// clc time
+	void update(float offsetX, float offsetY, viewTrans* vt)
 	{
+		clcRect.left = rect.left + offsetX;
+		clcRect.right = rect.right + offsetX;
+		clcRect.top = rect.top + offsetY;
+		clcRect.bottom = rect.bottom + offsetY;
+
 		if (itemType == UIT_button)
 		{
-			drawTex(dxDevice, offsetX, offsetY, vt);
+			updateTex(vt);
 		}
 		
 		if (itemType == UIT_text)
 		{
-			drawText(offsetX, offsetY, vt);
+			updateText(vt);
+		}
+		
+		// update children
+		for each (uiItem* uii in uiItems)
+		{
+			if (uii->enabled)
+			{
+				uii->update(clcRect.left, clcRect.top, vt); // stop on the first child to be taped
+			}
+		}
+	}
+
+	void draw(LPDIRECT3DDEVICE9 dxDevice)
+	{
+		if (itemType == UIT_button)
+		{
+			drawTex(dxDevice);
+		}
+		
+		if (itemType == UIT_text)
+		{
+			drawText();
 		}
 
 		for each (uiItem* uii in uiItems)
 		{
 			if (uii->enabled)
-				uii->draw(dxDevice, offsetX + rect.left, offsetY + rect.top, vt);
+				uii->draw(dxDevice);
 		}
 	}
 
-	void drawText(float offsetX, float offsetY, viewTrans* vt)
+	void updateText(viewTrans* vt)
 	{
-		RECT nRect;
-		nRect.left = vt->xToTextX(rect.left + offsetX);
-		nRect.right = vt->xToTextX(rect.right + offsetX);
-		nRect.top = vt->yToTextY(rect.top + offsetY);
-		nRect.bottom = vt->yToTextY(rect.bottom + offsetY);
-
-		font->DrawTextA(NULL, text.c_str(), -1, &nRect, textAlign, textCol);
+		clcTextRect.left = vt->xToTextX(clcRect.left);
+		clcTextRect.right = vt->xToTextX(clcRect.right);
+		clcTextRect.top = vt->yToTextY(clcRect.top);
+		clcTextRect.bottom = vt->yToTextY(clcRect.bottom);
 	}
 
-	void drawTex(LPDIRECT3DDEVICE9 dxDevice, float offsetX, float offsetY, viewTrans* vt)
+	void drawText()
 	{
-		D3DXMATRIX idMat;
-		D3DXMatrixIdentity(&idMat);
+		font->DrawTextA(NULL, text.c_str(), -1, &clcTextRect, textAlign, textCol);
+	}
 
-		vertexPCT verts[4];
-		float left = vt->xToScreen(rect.left + offsetX);
-		float right = vt->xToScreen(rect.right + offsetX);
-		float top = vt->yToScreen(rect.top + offsetY);
-		float bottom = vt->yToScreen(rect.bottom + offsetY);
+	void updateTex(viewTrans* vt)
+	{
+		float left = vt->xToScreen(clcRect.left);
+		float right = vt->xToScreen(clcRect.right);
+		float top = vt->yToScreen(clcRect.top);
+		float bottom = vt->yToScreen(clcRect.bottom);
 
 		float tleft, tright, ttop, tbottom;
 
@@ -8574,40 +8605,47 @@ public:
 			tbottom = 1.0f + (1.0f - tbottom) * tsy;
 		}
 
-		verts[0] = vertexPCT(vertexPC(left, top, 0, 1, 1, 1, -1), tleft, ttop); // negative tti means ignore tti
-		verts[1] = vertexPCT(vertexPC(right, top, 0, 1, 1, 1, -1), tright, ttop);
-		verts[2] = vertexPCT(vertexPC(left, bottom, 0, 1, 1, 1, -1), tleft, tbottom);
-		verts[3] = vertexPCT(vertexPC(right, bottom, 0, 1, 1, 1, -1), tright, tbottom);
+		clcTexVerts[0] = vertexPCT(vertexPC(left, top, 0, 1, 1, 1, -1), tleft, ttop); // negative tti means ignore tti
+		clcTexVerts[1] = vertexPCT(vertexPC(right, top, 0, 1, 1, 1, -1), tright, ttop);
+		clcTexVerts[2] = vertexPCT(vertexPC(left, bottom, 0, 1, 1, 1, -1), tleft, tbottom);
+		clcTexVerts[3] = vertexPCT(vertexPC(right, bottom, 0, 1, 1, 1, -1), tright, tbottom);
 
+		clcUseTexData = false; // default, may change below
 		if (texAlign & TXA_pixelOffset)
 		{
 			if (texW == -1 || texH == -1)
 			{
 				// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
-				D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / (float)(rect.right - rect.left + 1), 0.5 / (float)(rect.bottom - rect.top + 1), 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
-				effect.setTextureData((float*)&texData.x);
+				clcTexData = D3DXVECTOR4(0.5 / (float)(rect.right - rect.left + 1), 0.5 / (float)(rect.bottom - rect.top + 1), 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
+				clcUseTexData = true;
 				
 				for (int i = 0; i < 4; i++) // do ahead of shader
 				{
-					verts[i].tu += texData.x;
-					verts[i].tv += texData.y;
+					clcTexVerts[i].tu += clcTexData.x;
+					clcTexVerts[i].tv += clcTexData.y;
 				}
 				// end of stuff that might need revising
 			}
 			else
 			{
 				// fix offsetness - this might need revising (currently does the job for a full screen texture, but not much else)
-				D3DXVECTOR4 texData = D3DXVECTOR4(0.5 / texW, 0.5 / texH, 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
-				effect.setTextureData((float*)&texData.x);
+				clcTexData = D3DXVECTOR4(0.5 / texW, 0.5 / texH, 1.0 / (float)vt->bbuffWidth, 1.0 / (float)vt->bbuffHeight);
+				clcUseTexData = true;
 				
 				for (int i = 0; i < 4; i++) // do ahead of shader
 				{
-					verts[i].tu += texData.x;
-					verts[i].tv += texData.y;
+					clcTexVerts[i].tu += clcTexData.x;
+					clcTexVerts[i].tv += clcTexData.y;
 				}
 				// end of stuff that might need revising
 			}
 		}
+	}
+
+	void drawTex(LPDIRECT3DDEVICE9 dxDevice)
+	{
+		D3DXMATRIX idMat;
+		D3DXMatrixIdentity(&idMat);
 
 		dxDevice->SetVertexDeclaration(vertexDec);
 		effect.setTechnique(tech);
@@ -8616,13 +8654,16 @@ public:
 		effect.setViewProj(&idMat);
 		// effect.setTicker(ticker); would be nice to have this information
 
+		if (clcUseTexData)
+			effect.setTextureData((float*)&clcTexData.x);
+
 		effect.effect->CommitChanges();
 
 		UINT numPasses;
 		effect.effect->Begin(&numPasses, 0);
 		effect.effect->BeginPass(0);
 
-		dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, &verts, sizeof(vertexPCT));
+		dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, &clcTexVerts, sizeof(vertexPCT));
 
 		effect.effect->EndPass();
 		effect.effect->End();
@@ -9361,7 +9402,7 @@ uiItem* getTapedUiItem(float x, float y, float* xOut, float* yOut)
 	uiItem* taped;
 	for each (uiItem* uii in uiItems)
 	{
-		if (uii->enabled && uii->getTaped(x, y, 0, 0, &taped, xOut, yOut))
+		if (uii->enabled && uii->getTaped(x, y, &taped, xOut, yOut))
 			return taped;
 	}
 	return NULL;
@@ -11500,7 +11541,9 @@ void drawUi(LPDIRECT3DDEVICE9 dxDevice)
 	for each (uiItem* uii in uiItems)
 	{
 		if (uii->enabled)
-			uii->draw(dxDevice, 0, 0, &mainVt);
+			uii->update(0, 0, &mainVt);
+		if (uii->enabled)
+			uii->draw(dxDevice);
 	}
 
 	// disable all the generics
