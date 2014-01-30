@@ -8872,16 +8872,24 @@ public:
 	// clc time - if you want to just update this component, and not it's siblings, parents, etc. then pass the parent clcRext.left and clcRect.top
 	virtual void updateMe(viewTrans* vt) override
 	{
-		RECT boxRect = rect;
-		boxRect.right = boxRect.left + (boxRect.bottom - boxRect.top);
+		int w = rect.bottom - rect.top;
+
+		RECT boxRect;
+		boxRect.left = 0;
+		boxRect.right = w;
+		boxRect.top = 0;
+		boxRect.bottom = w;
 		box.rect = boxRect;
 
-		RECT labelRect = rect;
-		labelRect.left = labelRect.left + (labelRect.bottom - labelRect.top) + 5; // 5 pixel spacing
+		RECT labelRect;
+		labelRect.left = w + 5;
+		labelRect.right = rect.right;
+		labelRect.top = 0;
+		labelRect.bottom = w;
 		label.rect = labelRect;
 
-		box.update(0, 0, vt, true);
-		label.update(0, 0, vt, true);
+		box.update(clcRect.left, clcRect.top, vt, true);
+		label.update(clcRect.left, clcRect.top, vt, true);
 
 		// hack to make this less clickable
 		clcRect = box.clcRect;
@@ -9191,6 +9199,10 @@ viewTrans mainVt;
 uiTexItem* mainView;
 uiTextItem* bannerText;
 
+// menu
+uiTexItem* menuView;
+uiCheckItem* g_autoAlign;
+
 // debuging (ui items)
 bool debugData = false;
 bool debugFlushing = false; // only done if debugData is true
@@ -9459,7 +9471,6 @@ bool g_pause = false;
 bool g_ticks = 0;
 int g_seled = -1;
 bool initialised = false;
-bool g_autoalign = true;
 DWORD g_go = g_TM_red;
 LONGLONG g_noinput;
 
@@ -9818,7 +9829,7 @@ hit:
 
 void g_align(float leftNess = 0.0f, float highNess = 0.0f, bool force = false)
 {
-	if (!force && !g_autoalign)
+	if (!force && !g_autoAlign->isChecked())
 		return;
 
 	leftNess = leftNess / 1.0f;
@@ -10093,7 +10104,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		else if (wParam == 64 + 7) // g
 		{
-			g_autoalign = !g_autoalign;
+			g_autoAlign->toggleChecked();
 		}
 		else if (wParam == 64 + 18) // r
 		{
@@ -10122,6 +10133,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		else if (wParam == VK_ESCAPE)
 		{
+			menuView->enabled = !menuView->enabled;
 		}
 		break;
 	case WM_KEYUP:
@@ -10761,14 +10773,27 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	tempTex->texScaleX = 5.0f;
 	tempTex->texScaleY = 1.0f;
 
+	// menu view
+	rect.left = 200;
+	rect.right = winWidth - 200;
+	rect.top = 200;
+	rect.bottom = winHeight - 200;
+	tempTex = new uiTexItem(dxDevice, "debugItem", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &effects, &textures);
+	tempTex->enabled = false;
+	tempTex->clickable = false;
+	uiItems.push_back(tempTex);
+	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 0.5);
+	menuView = tempTex;
+	
 	rect.left = 10;
 	rect.right = 500;
-	rect.top = 10;
-	rect.bottom = 30;
-	tempCheck = new uiCheckItem(dxDevice, "testcheck", NULL, "Test CheckItem", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &effects, &textures);
+	rect.top = 100;
+	rect.bottom = 120;
+	tempCheck = new uiCheckItem(dxDevice, "autoalignCheck", menuView, "Auto Align View", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &effects, &textures);
 	tempCheck->enabled = true;
 	tempCheck->clickable = true;
-	uiItems.push_back(tempCheck);
+	g_autoAlign = tempCheck;
+	g_autoAlign->setChecked(true);
 
 	// debug view
 	rect.left = 175;
