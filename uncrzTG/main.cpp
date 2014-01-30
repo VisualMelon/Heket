@@ -8305,9 +8305,10 @@ public:
 	{
 		if (x >= clcRect.left && x <= clcRect.right && y >= clcRect.top && y <= clcRect.bottom)
 		{
-			// check children
-			for each (uiItem* uii in uiItems)
+			// check children - count backwards
+			for (int i = uiItems.size() - 1; i >= 0; i--)
 			{
+				uiItem* uii = uiItems[i];
 				if (uii->enabled && uii->getTaped(x, y, tapedOut, xOut, yOut))
 				{
 					return true; // stop on the first child to be taped
@@ -8333,9 +8334,13 @@ public:
 		*offsetY = clcRect.top;
 	}
 	
-	virtual void updateMe(viewTrans* vt) = 0;
+	virtual void updateMe(viewTrans* vt)
+	{
+	}
 
-	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice) = 0;
+	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice)
+	{
+	}
 
 	// clc time - if you want to just update this component, and not it's siblings, parents, etc. then pass the parent clcRext.left and clcRect.top
 	void update(float offsetX, float offsetY, viewTrans* vt, bool force)
@@ -8396,9 +8401,30 @@ public:
 			parent->uiItems.push_back(this);
 	}
 
-	void handleUi(DWORD action, DWORD* data, int datalen)
+	virtual void handleUi(DWORD action, DWORD* data, int datalen)
 	{
-		// no default behavouirs
+	}
+};
+
+struct uiBlankItem : public uiItem
+{
+
+	// tex construtor
+	// vertexDecN must be vertexPecPCT
+	uiBlankItem(RECT rectN)
+	{
+		needsUpdate = true;
+		rect = rectN;
+	}
+
+	virtual void updateMe(viewTrans *vt) override
+	{
+		// chill
+	}
+
+	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice) override
+	{
+		// chill
 	}
 };
 
@@ -8406,7 +8432,6 @@ struct uiTextItem : public uiItem
 {
 public:
 	LPD3DXFONT font;
-	D3DXVECTOR4 colMod;
 	D3DCOLOR textCol;
 	int textBufferSize;
 	std::string text;
@@ -8415,6 +8440,11 @@ public:
 	// clc - this is stuff that is calculated in update()
 	RECT clcTextRect;
 	// end clc
+
+	uiTextItem()
+	{
+		// never use this
+	}
 
 	// text constructor
 	uiTextItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, RECT rectN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN)
@@ -8455,28 +8485,6 @@ public:
 	void drawText()
 	{
 		font->DrawTextA(NULL, text.c_str(), -1, &clcTextRect, textAlign, textCol);
-	}
-};
-
-struct uiBlankItem : public uiItem
-{
-
-	// tex construtor
-	// vertexDecN must be vertexPecPCT
-	uiBlankItem(RECT rectN)
-	{
-		needsUpdate = true;
-		rect = rectN;
-	}
-
-	virtual void updateMe(viewTrans *vt) override
-	{
-		// chill
-	}
-
-	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice) override
-	{
-		// chill
 	}
 };
 
@@ -8524,6 +8532,11 @@ public:
 		useTex3 = false;
 	}
 
+	uiTexItem()
+	{
+		// never use this
+	}
+
 	// tex construtor
 	// vertexDecN must be vertexPecPCT
 	uiTexItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
@@ -8557,31 +8570,39 @@ public:
 	// oh dear
 	void loadTexture(LPDIRECT3DDEVICE9 dxDevice, DWORD texID, char* texFileName, bool enable, std::vector<UNCRZ_texture*>* textureList)
 	{
+		LPDIRECT3DTEXTURE9 texN = NULL;
+		if (texFileName != NULL)
+			createTexture(dxDevice, texFileName, &texN, textureList);
+		
+		loadTexture(texID, texN, enable);
+	}
+
+	void loadTexture(DWORD texID, LPDIRECT3DTEXTURE9 texN, bool enable)
+	{
 		switch (texID)
 		{
 		case TID_tex:
-			loadTexture(dxDevice, &useTex, &tex, texFileName, enable, textureList);
+			loadTexture(&useTex, &tex, texN, enable);
 			break;
 		case TID_tex0:
-			loadTexture(dxDevice, &useTex0, &tex0, texFileName, enable, textureList);
+			loadTexture(&useTex0, &tex0, texN, enable);
 			break;
 		case TID_tex1:
-			loadTexture(dxDevice, &useTex1, &tex1, texFileName, enable, textureList);
+			loadTexture(&useTex1, &tex1, texN, enable);
 			break;
 		case TID_tex2:
-			loadTexture(dxDevice, &useTex2, &tex2, texFileName, enable, textureList);
+			loadTexture(&useTex2, &tex2, texN, enable);
 			break;
 		case TID_tex3:
-			loadTexture(dxDevice, &useTex3, &tex3, texFileName, enable, textureList);
+			loadTexture(&useTex3, &tex3, texN, enable);
 			break;
 		}
 	}
 
-	void loadTexture(LPDIRECT3DDEVICE9 dxDevice, bool* usePtr, LPDIRECT3DTEXTURE9* texPtr, char* texFileName, bool enable, std::vector<UNCRZ_texture*>* textureList)
+	void loadTexture(bool* usePtr, LPDIRECT3DTEXTURE9* texPtr, LPDIRECT3DTEXTURE9 texN, bool enable)
 	{
 		*usePtr = enable;
-		if (texFileName != NULL)
-			createTexture(dxDevice, texFileName, texPtr, textureList);
+		*texPtr = texN;
 	}
 
 	void setTextures()
@@ -8784,6 +8805,100 @@ public:
 
 		effect.effect->EndPass();
 		effect.effect->End();
+	}
+};
+
+struct uiCheckItem : uiItem
+{
+private:
+	bool checked;
+
+	uiTexItem box;
+	uiTextItem label;
+
+	LPDIRECT3DTEXTURE9 onTex;
+	LPDIRECT3DTEXTURE9 offTex;
+
+public:
+	uiCheckItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+	{
+		name = nameN;
+		parent = parentN;
+		if (parent != NULL)
+			parent->uiItems.push_back(this);
+		enabled = false;
+		clickable = false;
+		rect = rectN;
+
+		// rect doesn't matter, gets changed by updateMe() anyway
+		box = uiTexItem(dxDevice, NULL, NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
+		box.enabled = true;
+		box.colMod = D3DXVECTOR4(1, 1, 1, 1);
+		box.texMode = TXM_fit;
+		box.texAlign = TXA_fillh | TXA_fillv | TXA_pixelOffset;
+
+		label = uiTextItem(dxDevice, NULL, NULL, rect, labelText, textColN, fontN);
+		label.enabled = true;
+		label.textAlign = DT_LEFT | DT_VCENTER;
+
+		createTexture(dxDevice, "ui/checkOn.tga", &onTex, textureList);
+		createTexture(dxDevice, "ui/checkOff.tga", &offTex, textureList);
+
+		setChecked(false);
+	}
+
+	void toggleChecked()
+	{
+		setChecked(!checked);
+	}
+
+	void setChecked(bool checkedN)
+	{
+		checked = checkedN;
+
+		if (checked)
+			box.loadTexture(TID_tex, onTex, true);
+		else
+			box.loadTexture(TID_tex, offTex, true);
+
+		needsUpdate = true;
+	}
+
+	bool isChecked()
+	{
+		return checked;
+	}
+
+	// clc time - if you want to just update this component, and not it's siblings, parents, etc. then pass the parent clcRext.left and clcRect.top
+	virtual void updateMe(viewTrans* vt) override
+	{
+		RECT boxRect = rect;
+		boxRect.right = boxRect.left + (boxRect.bottom - boxRect.top);
+		box.rect = boxRect;
+
+		RECT labelRect = rect;
+		labelRect.left = labelRect.left + (labelRect.bottom - labelRect.top) + 5; // 5 pixel spacing
+		label.rect = labelRect;
+
+		box.update(0, 0, vt, true);
+		label.update(0, 0, vt, true);
+
+		// hack to make this less clickable
+		clcRect = box.clcRect;
+	}
+
+	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice) override
+	{
+		box.draw(dxDevice);
+		label.draw(dxDevice);
+	}
+	
+	virtual void handleUi(DWORD action, DWORD* data, int datalen) override
+	{
+		if (action == UIA_leftclick || action == UIA_rightclick)
+		{
+			toggleChecked();
+		}
 	}
 };
 
@@ -9517,8 +9632,9 @@ bool getTapedPos(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir, int* x, int* y)
 uiItem* getTapedUiItem(float x, float y, float* xOut, float* yOut)
 {
 	uiItem* taped;
-	for each (uiItem* uii in uiItems)
+	for (int i = uiItems.size() - 1; i >= 0; i--)
 	{
+		uiItem* uii = uiItems[i];
 		if (uii->enabled && uii->getTaped(x, y, &taped, xOut, yOut))
 			return taped;
 	}
@@ -10592,6 +10708,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	RECT rect;
 	uiTexItem* tempTex;
 	uiTextItem* tempText;
+	uiCheckItem* tempCheck;
 
 	// (view one view)
 	rect.left = 0;
@@ -10643,6 +10760,15 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	tempTex->texAlign = TXA_left | TXA_bottom | TXA_offsetInset;
 	tempTex->texScaleX = 5.0f;
 	tempTex->texScaleY = 1.0f;
+
+	rect.left = 10;
+	rect.right = 500;
+	rect.top = 10;
+	rect.bottom = 30;
+	tempCheck = new uiCheckItem(dxDevice, "testcheck", NULL, "Test CheckItem", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &effects, &textures);
+	tempCheck->enabled = true;
+	tempCheck->clickable = true;
+	uiItems.push_back(tempCheck);
 
 	// debug view
 	rect.left = 175;
