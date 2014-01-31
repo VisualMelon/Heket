@@ -8257,10 +8257,93 @@ public:
 	}
 };
 
+const int UI_datalen = 4; // 4 is more than enough
+const int UI_numkeys = 255;
+
 // ui item action
+const DWORD UIA_tick = 0; // once per frame ATM
 const DWORD UIA_leftclick = 1;
 const DWORD UIA_rightclick = 2;
 const DWORD UIA_mousemove = 3;
+const DWORD UIA_keyDown = 4;
+const DWORD UIA_keyUp = 5;
+const DWORD UIA_cmd = 6;
+
+struct uiEvent
+{
+private:
+	bool consumed;
+	bool dataOnHeap;
+	uiEvent* next;
+
+public:
+	DWORD action;
+	DWORD* data;
+	int datalen;
+
+	uiEvent(DWORD actionN)
+	{
+		action = actionN;
+		data = NULL;
+		datalen = 0;
+		dataOnHeap = false;
+		next = NULL;
+		consumed = false;
+	}
+
+	uiEvent(DWORD actionN, DWORD* dataN, int datalenN, bool dataOnHeapN)
+	{
+		action = actionN;
+		data = dataN;
+		datalen = datalenN;
+		dataOnHeap = dataOnHeapN;
+		next = NULL;
+		consumed = false;
+	}
+
+	// should not append after moving
+	void append(uiEvent* nextN)
+	{
+		if (next == NULL)
+			next = nextN;
+		else
+			next->append(nextN);
+	}
+
+	void consume()
+	{
+		consumed = true;
+	}
+
+	bool move()
+	{
+		if (consumed)
+		{
+			release();
+			if (next == NULL)
+				return false;
+			else
+			{
+				action = next->action;
+				data = next->data;
+				dataOnHeap = next->dataOnHeap;
+				uiEvent* nnext = next->next;
+				delete(next);
+				next = nnext;
+			}
+		}
+		else
+			consumed = true;
+
+		return true;
+	}
+
+	void release()
+	{
+		if (dataOnHeap)
+			delete[datalen](data);
+	}
+};
 
 // tex alignment and modes (2 bits of horizontal, 2 bits for verticle, 2 bits for other stuff)
 const DWORD TXA_horizontal = 3;
@@ -8287,7 +8370,8 @@ const DWORD TXM_flat = 3; // requires image dimensions, no scaling
 struct uiItem
 {
 public:
-	char* name;
+	std::string name;
+	bool hasFocus;
 	bool enabled; // false initially
 	bool clickable; // false initially
 	RECT rect;
@@ -8401,18 +8485,34 @@ public:
 			parent->uiItems.push_back(this);
 	}
 
-	virtual void handleUi(DWORD action, DWORD* data, int datalen)
+	// return true if it should take/keep focus
+	virtual bool handleUi(uiEvent uie, bool keyDown[UI_numkeys])
 	{
+		return false;
+	}
+
+	virtual void focused()
+	{
+		hasFocus = true;
+	}
+
+	virtual void unFocused()
+	{
+		hasFocus = false;
 	}
 };
 
 struct uiBlankItem : public uiItem
 {
+public:
+	uiBlankItem()
+	{
+		// never use this
+	}
 
-	// tex construtor
-	// vertexDecN must be vertexPecPCT
 	uiBlankItem(RECT rectN)
 	{
+		hasFocus = false;
 		needsUpdate = true;
 		rect = rectN;
 	}
@@ -8431,10 +8531,10 @@ struct uiBlankItem : public uiItem
 struct uiTextItem : public uiItem
 {
 public:
+	std::string text;
 	LPD3DXFONT font;
 	D3DCOLOR textCol;
 	int textBufferSize;
-	std::string text;
 	DWORD textAlign;
 
 	// clc - this is stuff that is calculated in update()
@@ -8449,6 +8549,8 @@ public:
 	// text constructor
 	uiTextItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, RECT rectN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN)
 	{
+		hasFocus = false;
+
 		textAlign = DT_LEFT;
 
 		needsUpdate = true;
@@ -8463,7 +8565,7 @@ public:
 		textCol = textColN;
 		text = std::string(textN);
 	}
-	
+
 	virtual void updateMe(viewTrans* vt) override
 	{
 		updateText(vt);
@@ -8541,6 +8643,8 @@ public:
 	// vertexDecN must be vertexPecPCT
 	uiTexItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
 	{
+		hasFocus = false;
+
 		texW = -1; // means to assume we don't have this data (may be ignored)
 		texH = -1;
 
@@ -8820,8 +8924,15 @@ private:
 	LPDIRECT3DTEXTURE9 offTex;
 
 public:
+	uiCheckItem()
+	{
+		// never use this
+	}
+
 	uiCheckItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
 	{
+		hasFocus = false;
+
 		name = nameN;
 		parent = parentN;
 		if (parent != NULL)
@@ -8831,13 +8942,13 @@ public:
 		rect = rectN;
 
 		// rect doesn't matter, gets changed by updateMe() anyway
-		box = uiTexItem(dxDevice, NULL, NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
+		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
 		box.enabled = true;
 		box.colMod = D3DXVECTOR4(1, 1, 1, 1);
 		box.texMode = TXM_fit;
 		box.texAlign = TXA_fillh | TXA_fillv | TXA_pixelOffset;
 
-		label = uiTextItem(dxDevice, NULL, NULL, rect, labelText, textColN, fontN);
+		label = uiTextItem(dxDevice, "", NULL, rect, labelText, textColN, fontN);
 		label.enabled = true;
 		label.textAlign = DT_LEFT | DT_VCENTER;
 
@@ -8901,12 +9012,267 @@ public:
 		label.draw(dxDevice);
 	}
 	
-	virtual void handleUi(DWORD action, DWORD* data, int datalen) override
+	// return true if it should take focus
+	virtual bool handleUi(uiEvent uie, bool keyDown[UI_numkeys]) override
 	{
-		if (action == UIA_leftclick || action == UIA_rightclick)
+		if (uie.action == UIA_leftclick || uie.action == UIA_rightclick)
 		{
 			toggleChecked();
 		}
+
+		return false; // don't take focus
+	}
+};
+
+struct uiTextInputItem : uiItem
+{
+private:
+	uiTexItem box;
+	uiTextItem label;
+
+	int cursorPos;
+
+public:
+	uiTextInputItem()
+	{
+		// never use this
+	}
+
+	uiTextInputItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+	{
+		hasFocus = false;
+
+		name = nameN;
+		parent = parentN;
+		if (parent != NULL)
+			parent->uiItems.push_back(this);
+		enabled = false;
+		clickable = false;
+		rect = rectN;
+
+		// rect doesn't matter, gets changed by updateMe() anyway
+		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
+		box.enabled = true;
+		box.colMod = D3DXVECTOR4(1, 1, 1, 1);
+		box.texMode = TXM_fit;
+		box.texAlign = TXA_fillh | TXA_fillv | TXA_pixelOffset;
+
+		label = uiTextItem(dxDevice, "", NULL, rect, textN, textColN, fontN);
+		label.enabled = true;
+		label.textAlign = DT_LEFT | DT_TOP;
+
+		cursorPos = strlen(textN);
+		box.loadTexture(dxDevice, TID_tex, "ui/bland.tga", true, textureList  );
+	}
+
+	void insertText(char* ptext)
+	{
+		label.text = label.text.insert(cursorPos, ptext);
+		cursorPos += strlen(ptext);
+	}
+
+	void removeText(int count)
+	{
+		if (count < 0)
+		{ // backspace
+			count = -count;
+			if (count > cursorPos)
+				count = cursorPos;
+			
+			label.text = label.text.erase(cursorPos - count, cursorPos - 1);
+			cursorPos -= count;
+		}
+		else if (count > 0)
+		{ // delete
+			if (count > label.text.size() - cursorPos)
+				count = label.text.size() - cursorPos;
+			
+			label.text = label.text.erase(cursorPos, cursorPos + count - 1);
+		}
+	}
+
+	// clc time - if you want to just update this component, and not it's siblings, parents, etc. then pass the parent clcRext.left and clcRect.top
+	virtual void updateMe(viewTrans* vt) override
+	{
+		int w = rect.right - rect.left;
+		int h = rect.bottom - rect.top;
+
+		RECT boxRect;
+		boxRect.left = 0;
+		boxRect.right = w;
+		boxRect.top = 0;
+		boxRect.bottom = h;
+		box.rect = boxRect;
+
+		RECT labelRect;
+		labelRect.left = 0;
+		labelRect.right = w;
+		labelRect.top = 0;
+		labelRect.bottom = h;
+		label.rect = labelRect;
+
+		box.update(clcRect.left, clcRect.top, vt, true);
+		label.update(clcRect.left, clcRect.top, vt, true);
+	}
+
+	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice) override
+	{
+		box.draw(dxDevice);
+		label.draw(dxDevice);
+	}
+	
+	// return true if it should take focus
+	virtual bool handleUi(uiEvent uie, bool keyDown[UI_numkeys]) override
+	{
+		if (uie.action == UIA_leftclick || uie.action == UIA_rightclick)
+		{
+			needsUpdate = true;
+			return true; // get focus
+		}
+		else if (uie.action == UIA_keyDown)
+		{
+			uie.consume();
+
+			DWORD wParam = uie.data[0]; // copied from wndProc
+			if (wParam >= 64 + 1 && wParam < 64 + 26 + 1) // letters
+			{
+				insertText((char*)&wParam);
+			}
+			else if (wParam >= 48 && wParam < 48 + 10) // numbers
+			{
+				insertText((char*)&wParam);
+			}
+			else if (wParam == VK_SPACE)
+			{
+				insertText(" ");
+			}
+			else if (wParam == VK_OEM_PERIOD)
+			{
+				insertText(".");
+			}
+			else if (wParam == VK_OEM_COMMA)
+			{
+				insertText(",");
+			}
+			else if (wParam == VK_OEM_MINUS)
+			{
+				insertText("-");
+			}
+			else if (wParam == VK_OEM_PLUS)
+			{
+				insertText("+");
+			}
+			else if (wParam == VK_DIVIDE)
+			{
+				insertText("/");
+			}
+			else if (wParam == VK_MULTIPLY)
+			{
+				insertText("*");
+			}
+			else if (wParam == VK_BACK)
+			{
+				removeText(-1);
+			}
+			else if (wParam == VK_DELETE)
+			{
+				removeText(1);
+			}
+			else if (wParam == VK_LEFT)
+			{
+				if (cursorPos > 0)
+					cursorPos--;
+			}
+			else if (wParam == VK_RIGHT)
+			{
+				if (cursorPos < label.text.size())
+					cursorPos++;
+			}
+
+			if (wParam == VK_ESCAPE)
+				return false; // lose focus
+			return true; // hold focus
+		}
+	}
+};
+
+struct uiButtonItem : uiItem
+{
+private:
+	uiTexItem box;
+	uiTextItem label;
+
+public:
+	uiButtonItem()
+	{
+		// never use this
+	}
+
+	uiButtonItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+	{
+		hasFocus = false;
+
+		name = nameN;
+		parent = parentN;
+		if (parent != NULL)
+			parent->uiItems.push_back(this);
+		enabled = false;
+		clickable = false;
+		rect = rectN;
+
+		// rect doesn't matter, gets changed by updateMe() anyway
+		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
+		box.enabled = true;
+		box.colMod = D3DXVECTOR4(1, 1, 1, 1);
+		box.texMode = TXM_fit;
+		box.texAlign = TXA_fillh | TXA_fillv | TXA_pixelOffset;
+
+		label = uiTextItem(dxDevice, "", NULL, rect, labelText, textColN, fontN);
+		label.enabled = true;
+		label.textAlign = DT_CENTER | DT_VCENTER;
+
+		box.loadTexture(dxDevice, TID_tex, "ui/bland.tga", true, textureList  );
+	}
+
+	// clc time - if you want to just update this component, and not it's siblings, parents, etc. then pass the parent clcRext.left and clcRect.top
+	virtual void updateMe(viewTrans* vt) override
+	{
+		int w = rect.right - rect.left;
+		int h = rect.bottom - rect.top;
+
+		RECT boxRect;
+		boxRect.left = 0;
+		boxRect.right = w;
+		boxRect.top = 0;
+		boxRect.bottom = h;
+		box.rect = boxRect;
+
+		RECT labelRect;
+		labelRect.left = 0;
+		labelRect.right = w;
+		labelRect.top = 0;
+		labelRect.bottom = h;
+		label.rect = labelRect;
+
+		box.update(clcRect.left, clcRect.top, vt, true);
+		label.update(clcRect.left, clcRect.top, vt, true);
+	}
+
+	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice) override
+	{
+		box.draw(dxDevice);
+		label.draw(dxDevice);
+	}
+	
+	// return true if it should take/keep focus
+	virtual bool handleUi(uiEvent uie, bool keyDown[UI_numkeys]) override
+	{
+		if (uie.action == UIA_leftclick)
+		{
+			needsUpdate = true;
+			uie.append(new uiEvent(UIA_cmd)); // dispatch a cmd event
+		}
+		return false; // don't want focus
 	}
 };
 
@@ -9195,6 +9561,7 @@ UNCRZ_sprite* laserSprite;
 
 // ui
 std::vector<uiItem*> uiItems;
+uiItem* focusItem;
 viewTrans mainVt;
 uiTexItem* mainView;
 uiTextItem* bannerText;
@@ -9288,8 +9655,7 @@ void preventInput(float);
 bool takeInput();
 void eval();
 void handleUi(uiItem*, DWORD);
-void handleUi(uiItem*, DWORD, DWORD*, int);
-void handleKeys();
+void handleUi(uiItem*, uiEvent);
 void reload(LPDIRECT3DDEVICE9);
 void g_align(float, float, bool);
 void g_startGo();
@@ -9419,7 +9785,7 @@ void hr_accend(LARGE_INTEGER* start, LARGE_INTEGER* end, float* outTime)
 }
 
 float tInc = 0;
-bool keyDown[255];
+bool keyDown[UI_numkeys];
 
 // vpData
 UINT vpWidth;
@@ -10028,7 +10394,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly };
-			handleUi(tapedUii, UIA_mousemove, hudat, 2);
+			handleUi(tapedUii, uiEvent(UIA_mousemove, hudat, 2, false));
 			break;
 		}
 		break;
@@ -10043,7 +10409,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly};
-			handleUi(tapedUii, UIA_leftclick, hudat, 2);
+			handleUi(tapedUii, uiEvent(UIA_leftclick, hudat, 2, false));
 			break;
 		}
 		break;
@@ -10058,86 +10424,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly };
-			handleUi(tapedUii, UIA_rightclick, hudat, 2);
+			handleUi(tapedUii, uiEvent(UIA_rightclick, hudat, 2, false));
 			break;
 		}
 		break;
 	case WM_KEYDOWN:
-		keyDown[wParam] = true;
+		if (takeInput())
+		{
+			keyDown[wParam] = true;
 
-		if (!takeInput())
-			break;
-
-		if (wParam == 64 + 17) // q
-		{
-			if (g_seled != -1)
-			{
-				g_piece* turner = objs[g_seled];
-				if (g_canTurn(turner, true))
-				{
-					g_performTurn(turner, true);
-					turner->updateOffsetRot();
-					turner->lightDown();
-					g_seled = -1;
-					g_endGo();
-				}
-			}
-		}
-		else if (wParam == 64 + 5) // e
-		{
-			if (g_seled != -1)
-			{
-				g_piece* turner = objs[g_seled];
-				if (g_canTurn(turner, false))
-				{
-					g_performTurn(turner, false);
-					turner->updateOffsetRot();
-					turner->lightDown();
-					g_seled = -1;
-					g_endGo();
-				}
-			}
-		}
-		else if (wParam == 64 + 6) // f
-		{
-			wireFrame = !wireFrame;
-		}
-		else if (wParam == 64 + 7) // g
-		{
-			g_autoAlign->toggleChecked();
-		}
-		else if (wParam == 64 + 18) // r
-		{
-			g_startGame();
-			//reload(mainDxDevice);
-		}
-		else if (wParam == VK_PAUSE || wParam == 64 + 16) // p
-		{
-			g_pause = !g_pause;
-		}
-		else if (wParam == VK_HOME)
-		{
-			if (debugFlushing)
-			{
-				debugData = false;
-				debugFlushing = false;
-			}
-			else if (debugData)
-			{
-				debugFlushing = true;
-			}
-			else
-			{
-				debugData = true;
-			}
-		}
-		else if (wParam == VK_ESCAPE)
-		{
-			menuView->enabled = !menuView->enabled;
+			DWORD hudat[1] = { (DWORD)wParam };
+			handleUi(focusItem, uiEvent(UIA_keyDown, hudat, 1, false));
 		}
 		break;
 	case WM_KEYUP:
-		keyDown[wParam] = false;
+		if (takeInput())
+		{
+			keyDown[wParam] = false;
+
+			DWORD hudat[1] = { (DWORD)wParam };
+			handleUi(focusItem, uiEvent(UIA_keyUp, hudat, 1, false));
+		}
 		break;
 	case WM_DESTROY:
 		mainDxDevice->Release();
@@ -10247,14 +10554,36 @@ void prepBMap(std::ifstream* file, int* width, int* height)
 		file->get();
 }
 
-void handleUi(uiItem* uii, DWORD action)
+void setFocus(uiItem* focusN)
 {
-	handleUi(uii, action, NULL, 0);
+	if (focusItem == focusN)
+		return; // don't refocus
+
+	if (focusItem != NULL)
+		focusItem->unFocused();
+
+	focusItem = focusN;
+
+	if (focusItem != NULL)
+		focusItem->focused();
 }
 
-void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
+// dodgy stuff
+void handleUiBefore(uiItem* uii, uiEvent uie)
 {
-	uii->handleUi(action, data, datalen);
+	DWORD action = uie.action;
+	DWORD* data = uie.data;
+	
+	switch (action)
+	{
+	}
+}
+
+// less dodgy stuff
+void handleUiAfter(uiItem* uii, uiEvent uie)
+{
+	DWORD action = uie.action;
+	DWORD* data = uie.data;
 
 	RECT crect;
 	D3DVIEWPORT9 vp;
@@ -10269,134 +10598,300 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 
 	switch (action)
 	{
-	case UIA_leftclick:
-		if (uii->name == "mainover" && datalen == 2)
+		// nice stuff (commands, stuff spat out by uiItems, etc.)
+	case UIA_cmd:
+		// if uii == button do stuff etc. etc.
+		break;
+
+		// tick
+	case UIA_tick:
 		{
-			//mainDxDevice->GetViewport(&vp);
-			vp = createViewPort(1);
-			GetClientRect(mainHWnd, &crect);
-			vp = createViewPort(crect.right - crect.left, crect.bottom - crect.top);
-
-			screenVec.x = data[0];
-			screenVec.y = data[1];
-
-			screenVec.z = 0.1f;
-
-			D3DXMatrixIdentity(&mehMatrix);
-
-			D3DXVec3Unproject(&nearVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
-
-			screenVec.z = 1.0f;
-			D3DXVec3Unproject(&farVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
-
-			rayPos = nearVec;
-			rayDir = farVec - nearVec;
-			rayDirMod = sqrt(rayDir.x * rayDir.x + rayDir.y * rayDir.y + rayDir.z * rayDir.z);
-			rayDir.x /= rayDirMod;
-			rayDir.y /= rayDirMod;
-			rayDir.z /= rayDirMod;
-
-			taped = getTapedObj(&rayPos, &rayDir, &distRes, g_go);
-			if (g_seled != -1)
+			if (uii == NULL)
 			{
-				objs[g_seled]->lightDown();
-				g_seled = -1;
+				D3DXVECTOR3 dirVec;
+
+				if (keyDown[VK_UP])
+				{
+					rotPar -= 0.1f;
+					targRotPar -= 0.1f;
+				}
+				if (keyDown[VK_DOWN])
+				{
+					rotPar += 0.1f;
+					targRotPar += 0.1f;
+				}
+				if (keyDown[VK_RIGHT])
+				{
+					rotY -= 0.1f;
+					targRotY -= 0.1f;
+				}
+				if (keyDown[VK_LEFT])
+				{
+					rotY += 0.1f;
+					targRotY += 0.1f;
+				}
+				if (keyDown[VK_SPACE])
+				{
+					//D3DXSaveTextureToFile("mehReflect.bmp", D3DXIFF_BMP, waterReflectTex, NULL);
+					//D3DXSaveTextureToFile("mehRefract.bmp", D3DXIFF_BMP, waterRefractTex, NULL);
+					//D3DXSaveTextureToFile("mehUnder.bmp", D3DXIFF_BMP, underTex, NULL);
+					//D3DXSaveTextureToFile("mehLight.bmp", D3DXIFF_BMP, lights[2]->lightTex, NULL);
+					//D3DXSaveTextureToFile("mehSun.bmp", D3DXIFF_BMP, lights[0]->lightTex, NULL);
+
+					//D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
+					//D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
+					//D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
+					//D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
+
+					g_align(0.0f, 0.0f, true);
+				}
+				if (keyDown[64 + 23]) // w
+				{ // FORWARD
+					rotPar -= 0.1f;
+					targRotPar -= 0.1f;
+				}
+				if (keyDown[64 + 1]) // a
+				{ // LEFT
+					rotY += 0.1f;
+					targRotY += 0.1f;
+				}
+				if (keyDown[64 + 19]) // s
+				{ // BACKWARD
+					rotPar += 0.1f;
+					targRotPar += 0.1f;
+				}
+				if (keyDown[64 + 4]) // d
+				{ // RIGHT
+					rotY -= 0.1f;
+					targRotY -= 0.1f;
+				}
 			}
-			if (taped != -1)
+		}
+		break;
+
+		// ugly stuff
+	case UIA_keyDown:
+		{
+			if (uii == NULL)
 			{
-				g_seled = taped;
-				objs[g_seled]->lightUp();
-				
-				if (g_go == g_TM_red)
+				DWORD wParam = data[0]; // copied from wndProc
+				if (wParam == 64 + 17) // q
 				{
-					float leftNess = ((float)objs[g_seled]->x - 4.5f) / 9.0f;
-					float highNess = ((float)objs[g_seled]->y - 0.0f) / 8.0f;
-					g_align(leftNess, highNess - abs(leftNess));
+					if (g_seled != -1)
+					{
+						g_piece* turner = objs[g_seled];
+						if (g_canTurn(turner, true))
+						{
+							g_performTurn(turner, true);
+							turner->updateOffsetRot();
+							turner->lightDown();
+							g_seled = -1;
+							g_endGo();
+						}
+					}
 				}
-				else if (g_go == g_TM_silver)
+				else if (wParam == 64 + 5) // e
 				{
-					float leftNess = (4.5f - (float)objs[g_seled]->x) / 9.0f;
-					float highNess = (7.0f - (float)objs[g_seled]->y) / 8.0f;
-					g_align(leftNess, highNess - abs(leftNess));
+					if (g_seled != -1)
+					{
+						g_piece* turner = objs[g_seled];
+						if (g_canTurn(turner, false))
+						{
+							g_performTurn(turner, false);
+							turner->updateOffsetRot();
+							turner->lightDown();
+							g_seled = -1;
+							g_endGo();
+						}
+					}
 				}
-				else
-					g_align();
+				else if (wParam == 64 + 6) // f
+				{
+					wireFrame = !wireFrame;
+				}
+				else if (wParam == 64 + 7) // g
+				{
+					g_autoAlign->toggleChecked();
+				}
+				else if (wParam == 64 + 18) // r
+				{
+					g_startGame();
+					//reload(mainDxDevice);
+				}
+				else if (wParam == VK_PAUSE || wParam == 64 + 16) // p
+				{
+					g_pause = !g_pause;
+					for each (uiItem* uii in uiItems)
+					{
+						uii->needsUpdate = true; // good opertunity to update everything
+					}
+				}
+				else if (wParam == VK_HOME)
+				{
+					if (debugFlushing)
+					{
+						debugData = false;
+						debugFlushing = false;
+					}
+					else if (debugData)
+					{
+						debugFlushing = true;
+					}
+					else
+					{
+						debugData = true;
+					}
+				}
+				else if (wParam == VK_ESCAPE)
+				{
+					menuView->enabled = !menuView->enabled;
+				}
+			}
+		}
+		break;
+	case UIA_keyUp:
+		{
+			if (uii == NULL)
+			{
+				DWORD wParam = data[0]; // copied from wndProc
+				//if (wParam == 64 + index) // alphabet[index]
+				//{
+				//}
+			}
+		}
+		break;
+	case UIA_leftclick:
+		{
+			if (uii->name == "mainover")
+			{
+				//mainDxDevice->GetViewport(&vp);
+				vp = createViewPort(1);
+				GetClientRect(mainHWnd, &crect);
+				vp = createViewPort(crect.right - crect.left, crect.bottom - crect.top);
+
+				screenVec.x = data[0];
+				screenVec.y = data[1];
+
+				screenVec.z = 0.1f;
+
+				D3DXMatrixIdentity(&mehMatrix);
+
+				D3DXVec3Unproject(&nearVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
+
+				screenVec.z = 1.0f;
+				D3DXVec3Unproject(&farVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
+
+				rayPos = nearVec;
+				rayDir = farVec - nearVec;
+				rayDirMod = sqrt(rayDir.x * rayDir.x + rayDir.y * rayDir.y + rayDir.z * rayDir.z);
+				rayDir.x /= rayDirMod;
+				rayDir.y /= rayDirMod;
+				rayDir.z /= rayDirMod;
+
+				taped = getTapedObj(&rayPos, &rayDir, &distRes, g_go);
+				if (g_seled != -1)
+				{
+					objs[g_seled]->lightDown();
+					g_seled = -1;
+				}
+				if (taped != -1)
+				{
+					g_seled = taped;
+					objs[g_seled]->lightUp();
+					
+					if (g_go == g_TM_red)
+					{
+						float leftNess = ((float)objs[g_seled]->x - 4.5f) / 9.0f;
+						float highNess = ((float)objs[g_seled]->y - 0.0f) / 8.0f;
+						g_align(leftNess, highNess - abs(leftNess));
+					}
+					else if (g_go == g_TM_silver)
+					{
+						float leftNess = (4.5f - (float)objs[g_seled]->x) / 9.0f;
+						float highNess = (7.0f - (float)objs[g_seled]->y) / 8.0f;
+						g_align(leftNess, highNess - abs(leftNess));
+					}
+					else
+						g_align();
+				}
 			}
 		}
 		break;
 	case UIA_rightclick:
-		if (uii->name == "mainover" && datalen == 2)
 		{
-			//mainDxDevice->GetViewport(&vp);
-			vp = createViewPort(1);
-			GetClientRect(mainHWnd, &crect);
-			vp = createViewPort(crect.right - crect.left, crect.bottom - crect.top);
-
-			screenVec.x = data[0];
-			screenVec.y = data[1];
-
-			screenVec.z = 0.1f;
-
-			D3DXMatrixIdentity(&mehMatrix);
-
-			D3DXVec3Unproject(&nearVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
-
-			screenVec.z = 1.0f;
-			D3DXVec3Unproject(&farVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
-
-			rayPos = nearVec;
-			rayDir = farVec - nearVec;
-			rayDirMod = sqrt(rayDir.x * rayDir.x + rayDir.y * rayDir.y + rayDir.z * rayDir.z);
-			rayDir.x /= rayDirMod;
-			rayDir.y /= rayDirMod;
-			rayDir.z /= rayDirMod;
-
-			if (g_seled != -1)
+			if (uii->name == "mainover")
 			{
-				int x, y;
-				if (getTapedPos(&rayPos, &rayDir, &x, &y))
+				//mainDxDevice->GetViewport(&vp);
+				vp = createViewPort(1);
+				GetClientRect(mainHWnd, &crect);
+				vp = createViewPort(crect.right - crect.left, crect.bottom - crect.top);
+
+				screenVec.x = data[0];
+				screenVec.y = data[1];
+
+				screenVec.z = 0.1f;
+
+				D3DXMatrixIdentity(&mehMatrix);
+
+				D3DXVec3Unproject(&nearVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
+
+				screenVec.z = 1.0f;
+				D3DXVec3Unproject(&farVec, &screenVec, &vp, &views[0]->viewProjMat, &views[0]->viewViewMat, &mehMatrix);
+
+				rayPos = nearVec;
+				rayDir = farVec - nearVec;
+				rayDirMod = sqrt(rayDir.x * rayDir.x + rayDir.y * rayDir.y + rayDir.z * rayDir.z);
+				rayDir.x /= rayDirMod;
+				rayDir.y /= rayDirMod;
+				rayDir.z /= rayDirMod;
+
+				if (g_seled != -1)
 				{
-					g_piece* mover = objs[g_seled];
-					if (g_canMove(mover, x, y))
+					int x, y;
+					if (getTapedPos(&rayPos, &rayDir, &x, &y))
 					{
-						g_performMove(mover, x, y);
+						g_piece* mover = objs[g_seled];
+						if (g_canMove(mover, x, y))
+						{
+							g_performMove(mover, x, y);
+							mover->updateOffsetRot();
+							mover->lightDown();
+							g_seled = -1;
+							g_endGo();
+						}
+						/*if (x == mover->x && y == mover->y)
+							goto noGo;
+						if ((x == 0 && y == 7) || (x == 9 && y == 0))
+							goto noGo;
+						if (mover->type == g_PC_sphinx)
+							goto noGo;
+						if (abs(x - mover->x) > 1 || abs(y - mover->y) > 1)
+							goto noGo;
+						if (mover->type != g_PC_scarab && getOccupier(x, y) != -1)
+							goto noGo;
+						if (getCellTeam(x, y) != g_TM_none && getCellTeam(x, y) != mover->team)
+							goto noGo;
+
+						if (mover->type == g_PC_scarab && getOccupier(x, y) != -1)
+						{
+							g_piece* moved = objs[getOccupier(x, y)];
+							moved->x = mover->x;
+							moved->y = mover->y;
+							moved->updateOffsetRot();
+							moved->update(true);
+						}
+
+						mover->x = x;
+						mover->y = y;
+
 						mover->updateOffsetRot();
 						mover->lightDown();
 						g_seled = -1;
-						g_endGo();
+
+						g_endGo();*/
+	//noGo:
+						break;
 					}
-					/*if (x == mover->x && y == mover->y)
-						goto noGo;
-					if ((x == 0 && y == 7) || (x == 9 && y == 0))
-						goto noGo;
-					if (mover->type == g_PC_sphinx)
-						goto noGo;
-					if (abs(x - mover->x) > 1 || abs(y - mover->y) > 1)
-						goto noGo;
-					if (mover->type != g_PC_scarab && getOccupier(x, y) != -1)
-						goto noGo;
-					if (getCellTeam(x, y) != g_TM_none && getCellTeam(x, y) != mover->team)
-						goto noGo;
-
-					if (mover->type == g_PC_scarab && getOccupier(x, y) != -1)
-					{
-						g_piece* moved = objs[getOccupier(x, y)];
-						moved->x = mover->x;
-						moved->y = mover->y;
-						moved->updateOffsetRot();
-						moved->update(true);
-					}
-
-					mover->x = x;
-					mover->y = y;
-
-					mover->updateOffsetRot();
-					mover->lightDown();
-					g_seled = -1;
-
-					g_endGo();*/
-//noGo:
-					break;
 				}
 			}
 		}
@@ -10404,72 +10899,20 @@ void handleUi(uiItem* uii, DWORD action, DWORD* data, int datalen)
 	}
 }
 
-void handleKeys()
+void handleUi(uiItem* uii, DWORD action)
 {
-	RECT crect;
-	float sx, sy;
-	D3DVIEWPORT9 vp;
-	D3DXMATRIX mehMatrix;
-	D3DXMATRIX viewProjInv;
-	D3DXVECTOR3 nearVec, farVec, screenVec, rayPos, rayDir;
-	D3DXVECTOR3 dirVec;
-	float distRes = 0.0f;
+	handleUi(uii, uiEvent(action));
+}
 
-	if (keyDown[VK_UP])
-	{
-		rotPar -= 0.1f;
-		targRotPar -= 0.1f;
-	}
-	if (keyDown[VK_DOWN])
-	{
-		rotPar += 0.1f;
-		targRotPar += 0.1f;
-	}
-	if (keyDown[VK_RIGHT])
-	{
-		rotY -= 0.1f;
-		targRotY -= 0.1f;
-	}
-	if (keyDown[VK_LEFT])
-	{
-		rotY += 0.1f;
-		targRotY += 0.1f;
-	}
-	if (keyDown[VK_SPACE])
-	{
-		//D3DXSaveTextureToFile("mehReflect.bmp", D3DXIFF_BMP, waterReflectTex, NULL);
-		//D3DXSaveTextureToFile("mehRefract.bmp", D3DXIFF_BMP, waterRefractTex, NULL);
-		//D3DXSaveTextureToFile("mehUnder.bmp", D3DXIFF_BMP, underTex, NULL);
-		//D3DXSaveTextureToFile("mehLight.bmp", D3DXIFF_BMP, lights[2]->lightTex, NULL);
-		//D3DXSaveTextureToFile("mehSun.bmp", D3DXIFF_BMP, lights[0]->lightTex, NULL);
+void handleUi(uiItem* uii, uiEvent uie)
+{
+	handleUiBefore(uii, uie);
 
-		//D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
-		//D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
-		//D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
-		//D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
+	if (uii != NULL && uii->handleUi(uie, keyDown))
+		setFocus(uii);
 
-		g_align(0.0f, 0.0f, true);
-	}
-	if (keyDown[64 + 23]) // w
-	{ // FORWARD
-		rotPar -= 0.1f;
-		targRotPar -= 0.1f;
-	}
-	if (keyDown[64 + 1]) // a
-	{ // LEFT
-		rotY += 0.1f;
-		targRotY += 0.1f;
-	}
-	if (keyDown[64 + 19]) // s
-	{ // BACKWARD
-		rotPar += 0.1f;
-		targRotPar += 0.1f;
-	}
-	if (keyDown[64 + 4]) // d
-	{ // RIGHT
-		rotY -= 0.1f;
-		targRotY -= 0.1f;
-	}
+	while (uie.move())
+		handleUiAfter(uii, uie);
 }
 
 float compTime(LARGE_INTEGER a, LARGE_INTEGER b)
@@ -10515,7 +10958,7 @@ void eval()
 		}
 	}
 
-	handleKeys();
+	handleUi(focusItem, UIA_tick);
 
 	float distRes;
 	D3DXVECTOR3 nearVec, farVec, rayDir;
@@ -10712,6 +11155,8 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	int winHeight = crect.bottom - crect.top;
 	mainVt = viewTrans(vp.Width, vp.Height, winWidth, winHeight);
 
+	focusItem = NULL;
+
 	// font
 	LPD3DXFONT uiFont;
 	createFont(dxDevice, (int)mainVt.yToTextY((float)20), "uifont", &uiFont, &fonts);
@@ -10721,6 +11166,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	uiTexItem* tempTex;
 	uiTextItem* tempText;
 	uiCheckItem* tempCheck;
+	uiTextInputItem* tempTextInput;
 
 	// (view one view)
 	rect.left = 0;
@@ -10794,6 +11240,14 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	tempCheck->clickable = true;
 	g_autoAlign = tempCheck;
 	g_autoAlign->setChecked(true);
+	
+	rect.left = 10;
+	rect.right = 500;
+	rect.top = 130;
+	rect.bottom = 150;
+	tempTextInput = new uiTextInputItem(dxDevice, "testtextinput", menuView, "", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &effects, &textures);
+	tempTextInput->enabled = true;
+	tempTextInput->clickable = true;
 
 	// debug view
 	rect.left = 175;
