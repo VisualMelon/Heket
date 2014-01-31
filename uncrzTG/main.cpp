@@ -8257,17 +8257,26 @@ public:
 	}
 };
 
-const int UI_datalen = 4; // 4 is more than enough
 const int UI_numkeys = 255;
+
+// ui focusing
+const DWORD UIF_lose = 0; // lose focus if I have it
+const DWORD UIF_gain = 1; // gain focus if I don't have it / keep
+const DWORD UIF_keep = 2; // keep focus if I don't have it
+const DWORD UIF_clear = 3; // unfocus whatever is focused / lose
+const DWORD UIF_keepOrClear = 4; // keep focus if I have it, otherwise clear it
 
 // ui item action
 const DWORD UIA_tick = 0; // once per frame ATM
-const DWORD UIA_leftclick = 1;
-const DWORD UIA_rightclick = 2;
-const DWORD UIA_mousemove = 3;
-const DWORD UIA_keyDown = 4;
-const DWORD UIA_keyUp = 5;
-const DWORD UIA_cmd = 6;
+const DWORD UIA_leftDown = 1;
+const DWORD UIA_rightDown = 2;
+const DWORD UIA_leftUp = 3;
+const DWORD UIA_rightUp = 4;
+const DWORD UIA_mousemove = 5;
+const DWORD UIA_keyDown = 6;
+const DWORD UIA_keyUp = 7;
+const DWORD UIA_cmd = 8;
+const DWORD UIA_stateChange = 9;
 
 struct uiEvent
 {
@@ -8301,6 +8310,16 @@ public:
 		consumed = false;
 	}
 
+	void consume()
+	{
+		consumed = true;
+	}
+
+	bool wasConsumed()
+	{
+		return consumed;
+	}
+
 	// should not append after moving
 	void append(uiEvent* nextN)
 	{
@@ -8308,11 +8327,6 @@ public:
 			next = nextN;
 		else
 			next->append(nextN);
-	}
-
-	void consume()
-	{
-		consumed = true;
 	}
 
 	bool move()
@@ -8371,7 +8385,7 @@ struct uiItem
 {
 public:
 	std::string name;
-	bool hasFocus;
+	bool focused;
 	bool enabled; // false initially
 	bool clickable; // false initially
 	RECT rect;
@@ -8485,20 +8499,19 @@ public:
 			parent->uiItems.push_back(this);
 	}
 
-	// return true if it should take/keep focus
-	virtual bool handleUi(uiEvent uie, bool keyDown[UI_numkeys])
+	virtual DWORD handleUi(uiEvent* uie, bool keyDown[UI_numkeys])
 	{
-		return false;
+		return UIF_keep;
 	}
 
-	virtual void focused()
+	virtual void enfocus()
 	{
-		hasFocus = true;
+		focused = true;
 	}
 
-	virtual void unFocused()
+	virtual void unfocus()
 	{
-		hasFocus = false;
+		focused = false;
 	}
 };
 
@@ -8512,7 +8525,7 @@ public:
 
 	uiBlankItem(RECT rectN)
 	{
-		hasFocus = false;
+		focused = false;
 		needsUpdate = true;
 		rect = rectN;
 	}
@@ -8549,7 +8562,7 @@ public:
 	// text constructor
 	uiTextItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, RECT rectN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN)
 	{
-		hasFocus = false;
+		focused = false;
 
 		textAlign = DT_LEFT;
 
@@ -8643,7 +8656,7 @@ public:
 	// vertexDecN must be vertexPecPCT
 	uiTexItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
 	{
-		hasFocus = false;
+		focused = false;
 
 		texW = -1; // means to assume we don't have this data (may be ignored)
 		texH = -1;
@@ -8931,7 +8944,7 @@ public:
 
 	uiCheckItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
 	{
-		hasFocus = false;
+		focused = false;
 
 		name = nameN;
 		parent = parentN;
@@ -9013,14 +9026,15 @@ public:
 	}
 	
 	// return true if it should take focus
-	virtual bool handleUi(uiEvent uie, bool keyDown[UI_numkeys]) override
+	virtual DWORD handleUi(uiEvent* uie, bool keyDown[UI_numkeys]) override
 	{
-		if (uie.action == UIA_leftclick || uie.action == UIA_rightclick)
+		if (uie->action == UIA_leftDown || uie->action == UIA_rightDown)
 		{
 			toggleChecked();
+			uie->append(new uiEvent(UIA_stateChange));
 		}
 
-		return false; // don't take focus
+		return UIF_keep;
 	}
 };
 
@@ -9040,7 +9054,7 @@ public:
 
 	uiTextInputItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
 	{
-		hasFocus = false;
+		focused = false;
 
 		name = nameN;
 		parent = parentN;
@@ -9079,7 +9093,7 @@ public:
 			if (count > cursorPos)
 				count = cursorPos;
 			
-			label.text = label.text.erase(cursorPos - count, cursorPos - 1);
+			label.text = label.text.erase(cursorPos - count, count);
 			cursorPos -= count;
 		}
 		else if (count > 0)
@@ -9087,7 +9101,7 @@ public:
 			if (count > label.text.size() - cursorPos)
 				count = label.text.size() - cursorPos;
 			
-			label.text = label.text.erase(cursorPos, cursorPos + count - 1);
+			label.text = label.text.erase(cursorPos, count);
 		}
 	}
 
@@ -9105,8 +9119,8 @@ public:
 		box.rect = boxRect;
 
 		RECT labelRect;
-		labelRect.left = 0;
-		labelRect.right = w;
+		labelRect.left = 2;
+		labelRect.right = w - 2;
 		labelRect.top = 0;
 		labelRect.bottom = h;
 		label.rect = labelRect;
@@ -9118,22 +9132,28 @@ public:
 	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice) override
 	{
 		box.draw(dxDevice);
+
+		// put in cursor is we want one
+		if (focused)
+			label.text = label.text.insert(cursorPos, "|");
 		label.draw(dxDevice);
+		if (focused)
+			label.text = label.text.erase(cursorPos, 1);
 	}
 	
 	// return true if it should take focus
-	virtual bool handleUi(uiEvent uie, bool keyDown[UI_numkeys]) override
+	virtual DWORD handleUi(uiEvent* uie, bool keyDown[UI_numkeys]) override
 	{
-		if (uie.action == UIA_leftclick || uie.action == UIA_rightclick)
+		if (uie->action == UIA_leftDown || uie->action == UIA_rightDown)
 		{
 			needsUpdate = true;
-			return true; // get focus
+			return UIF_gain; // get focus
 		}
-		else if (uie.action == UIA_keyDown)
+		else if (uie->action == UIA_keyDown)
 		{
-			uie.consume();
+			uie->consume();
 
-			DWORD wParam = uie.data[0]; // copied from wndProc
+			DWORD wParam = uie->data[0]; // copied from wndProc
 			if (wParam >= 64 + 1 && wParam < 64 + 26 + 1) // letters
 			{
 				insertText((char*)&wParam);
@@ -9188,11 +9208,18 @@ public:
 				if (cursorPos < label.text.size())
 					cursorPos++;
 			}
+			else
+			{
+				if (wParam == VK_ESCAPE || wParam == VK_RETURN)
+					return UIF_lose;
+				return UIF_keep;
+			}
 
-			if (wParam == VK_ESCAPE)
-				return false; // lose focus
-			return true; // hold focus
+			uie->append(new uiEvent(UIA_stateChange));
+			return UIF_keep;
 		}
+
+		return UIF_keep;
 	}
 };
 
@@ -9208,9 +9235,9 @@ public:
 		// never use this
 	}
 
-	uiButtonItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+	uiButtonItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
 	{
-		hasFocus = false;
+		focused = false;
 
 		name = nameN;
 		parent = parentN;
@@ -9231,7 +9258,10 @@ public:
 		label.enabled = true;
 		label.textAlign = DT_CENTER | DT_VCENTER;
 
-		box.loadTexture(dxDevice, TID_tex, "ui/bland.tga", true, textureList  );
+		if (texFileName == NULL)
+			texFileName = "ui/bland.tga";
+
+		box.loadTexture(dxDevice, TID_tex, texFileName, true, textureList  );
 	}
 
 	// clc time - if you want to just update this component, and not it's siblings, parents, etc. then pass the parent clcRext.left and clcRect.top
@@ -9265,14 +9295,15 @@ public:
 	}
 	
 	// return true if it should take/keep focus
-	virtual bool handleUi(uiEvent uie, bool keyDown[UI_numkeys]) override
+	virtual DWORD handleUi(uiEvent* uie, bool keyDown[UI_numkeys]) override
 	{
-		if (uie.action == UIA_leftclick)
+		// make us mouseUp/mouseDown
+		if (uie->action == UIA_leftDown)
 		{
 			needsUpdate = true;
-			uie.append(new uiEvent(UIA_cmd)); // dispatch a cmd event
+			uie->append(new uiEvent(UIA_cmd)); // dispatch a cmd event
 		}
-		return false; // don't want focus
+		return UIF_keep;
 	}
 };
 
@@ -9568,6 +9599,7 @@ uiTextItem* bannerText;
 
 // menu
 uiTexItem* menuView;
+uiButtonItem* g_restart;
 uiCheckItem* g_autoAlign;
 
 // debuging (ui items)
@@ -9655,7 +9687,7 @@ void preventInput(float);
 bool takeInput();
 void eval();
 void handleUi(uiItem*, DWORD);
-void handleUi(uiItem*, uiEvent);
+void handleUi(uiItem*, uiEvent*);
 void reload(LPDIRECT3DDEVICE9);
 void g_align(float, float, bool);
 void g_startGo();
@@ -10394,7 +10426,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly };
-			handleUi(tapedUii, uiEvent(UIA_mousemove, hudat, 2, false));
+			handleUi(tapedUii, new uiEvent(UIA_mousemove, hudat, 2, false));
 			break;
 		}
 		break;
@@ -10409,7 +10441,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly};
-			handleUi(tapedUii, uiEvent(UIA_leftclick, hudat, 2, false));
+			handleUi(tapedUii, new uiEvent(UIA_leftDown, hudat, 2, false));
 			break;
 		}
 		break;
@@ -10424,7 +10456,37 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly };
-			handleUi(tapedUii, uiEvent(UIA_rightclick, hudat, 2, false));
+			handleUi(tapedUii, new uiEvent(UIA_rightDown, hudat, 2, false));
+			break;
+		}
+		break;
+	case WM_LBUTTONUP:
+		if (!takeInput())
+			break;
+
+		sx = (float)LOWORD(lParam);
+		sy = (float)HIWORD(lParam);
+
+		tapedUii = getTapedUiItem(sx, sy, &lx, &ly);
+		if (tapedUii != NULL)
+		{
+			DWORD hudat[2] = { lx, ly};
+			handleUi(tapedUii, new uiEvent(UIA_leftUp, hudat, 2, false));
+			break;
+		}
+		break;
+	case WM_RBUTTONUP:
+		if (!takeInput())
+			break;
+
+		sx = (float)LOWORD(lParam);
+		sy = (float)HIWORD(lParam);
+
+		tapedUii = getTapedUiItem(sx, sy, &lx, &ly);
+		if (tapedUii != NULL)
+		{
+			DWORD hudat[2] = { lx, ly };
+			handleUi(tapedUii, new uiEvent(UIA_rightUp, hudat, 2, false));
 			break;
 		}
 		break;
@@ -10434,7 +10496,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			keyDown[wParam] = true;
 
 			DWORD hudat[1] = { (DWORD)wParam };
-			handleUi(focusItem, uiEvent(UIA_keyDown, hudat, 1, false));
+			handleUi(focusItem, new uiEvent(UIA_keyDown, hudat, 1, false));
 		}
 		break;
 	case WM_KEYUP:
@@ -10443,7 +10505,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			keyDown[wParam] = false;
 
 			DWORD hudat[1] = { (DWORD)wParam };
-			handleUi(focusItem, uiEvent(UIA_keyUp, hudat, 1, false));
+			handleUi(focusItem, new uiEvent(UIA_keyUp, hudat, 1, false));
 		}
 		break;
 	case WM_DESTROY:
@@ -10560,31 +10622,28 @@ void setFocus(uiItem* focusN)
 		return; // don't refocus
 
 	if (focusItem != NULL)
-		focusItem->unFocused();
+		focusItem->unfocus();
 
 	focusItem = focusN;
 
 	if (focusItem != NULL)
-		focusItem->focused();
+		focusItem->enfocus();
 }
 
 // dodgy stuff
-void handleUiBefore(uiItem* uii, uiEvent uie)
+void handleUiBefore(uiItem* uii, uiEvent* uie)
 {
-	DWORD action = uie.action;
-	DWORD* data = uie.data;
-	
+	DWORD action = uie->action;
+	DWORD* data = uie->data;
+
 	switch (action)
 	{
 	}
 }
 
-// less dodgy stuff
-void handleUiAfter(uiItem* uii, uiEvent uie)
+// less dodgy stuff - not allowed to mess with the uiEvent
+void handleUiAfter(uiItem* uii, DWORD action, DWORD* data)
 {
-	DWORD action = uie.action;
-	DWORD* data = uie.data;
-
 	RECT crect;
 	D3DVIEWPORT9 vp;
 	D3DXMATRIX mehMatrix;
@@ -10600,7 +10659,10 @@ void handleUiAfter(uiItem* uii, uiEvent uie)
 	{
 		// nice stuff (commands, stuff spat out by uiItems, etc.)
 	case UIA_cmd:
-		// if uii == button do stuff etc. etc.
+		if (uii == g_restart)
+		{
+			g_startGame();
+		}
 		break;
 
 		// tick
@@ -10716,7 +10778,6 @@ void handleUiAfter(uiItem* uii, uiEvent uie)
 				else if (wParam == 64 + 18) // r
 				{
 					g_startGame();
-					//reload(mainDxDevice);
 				}
 				else if (wParam == VK_PAUSE || wParam == 64 + 16) // p
 				{
@@ -10760,10 +10821,12 @@ void handleUiAfter(uiItem* uii, uiEvent uie)
 			}
 		}
 		break;
-	case UIA_leftclick:
+	case UIA_leftDown:
 		{
 			if (uii->name == "mainover")
 			{
+				setFocus(NULL);
+
 				//mainDxDevice->GetViewport(&vp);
 				vp = createViewPort(1);
 				GetClientRect(mainHWnd, &crect);
@@ -10817,10 +10880,12 @@ void handleUiAfter(uiItem* uii, uiEvent uie)
 			}
 		}
 		break;
-	case UIA_rightclick:
+	case UIA_rightDown:
 		{
 			if (uii->name == "mainover")
 			{
+				setFocus(NULL);
+
 				//mainDxDevice->GetViewport(&vp);
 				vp = createViewPort(1);
 				GetClientRect(mainHWnd, &crect);
@@ -10901,18 +10966,37 @@ void handleUiAfter(uiItem* uii, uiEvent uie)
 
 void handleUi(uiItem* uii, DWORD action)
 {
-	handleUi(uii, uiEvent(action));
+	handleUi(uii, new uiEvent(action));
 }
 
-void handleUi(uiItem* uii, uiEvent uie)
+void handleUi(uiItem* uii, uiEvent* uie)
 {
-	handleUiBefore(uii, uie);
+	handleUiBefore(uii, uie); // can consume, preventing it getting to the uiItem
+	if (uie->wasConsumed())
+		return;
 
-	if (uii != NULL && uii->handleUi(uie, keyDown))
-		setFocus(uii);
+	if (uii != NULL)
+	{
+		DWORD uif = uii->handleUi(uie, keyDown);
 
-	while (uie.move())
-		handleUiAfter(uii, uie);
+		if (uif == UIF_clear)
+			setFocus(NULL);
+		else if (uii == focusItem)
+		{
+			if (uif == UIF_lose)
+				setFocus(NULL);
+		}
+		else
+		{
+			if (uif == UIF_gain)
+				setFocus(uii);
+			else if (uif == UIF_keepOrClear)
+				setFocus(NULL);
+		}
+	}
+
+	while (uie->move())
+		handleUiAfter(uii, uie->action, uie->data);
 }
 
 float compTime(LARGE_INTEGER a, LARGE_INTEGER b)
@@ -11167,6 +11251,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	uiTextItem* tempText;
 	uiCheckItem* tempCheck;
 	uiTextInputItem* tempTextInput;
+	uiButtonItem* tempButton;
 
 	// (view one view)
 	rect.left = 0;
@@ -11231,6 +11316,15 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 0.5);
 	menuView = tempTex;
 	
+	rect.left = 10;
+	rect.right = 200;
+	rect.top = 70;
+	rect.bottom = 90;
+	tempButton = new uiButtonItem(dxDevice, "restartButton", menuView, "Restart", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", NULL, rect, &effects, &textures);
+	tempButton->enabled = true;
+	tempButton->clickable = true;
+	g_restart = tempButton;
+
 	rect.left = 10;
 	rect.right = 500;
 	rect.top = 100;
