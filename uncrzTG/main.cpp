@@ -23,6 +23,8 @@ const float FOV = D3DX_PI / 2.5f;
 // :D
 // :D
 
+#define UNCRZ_STDSAMPLE D3DMULTISAMPLE_NONE
+
 // debug/hr (performance) defines
 #define DEBUG_HR_START(x) if (debugData) hr_start(x)
 #define DEBUG_HR_ZERO(x) if (debugData) hr_zero(x)
@@ -241,9 +243,6 @@ public:
 	LPDIRECT3DTEXTURE9 lightPatternTex;
 
 	D3DXMATRIX lightViewProj;
-
-	// this is for fun mostley
-	UNCRZ_obj* attach;
 
 	void init(LPDIRECT3DDEVICE9 dxDevice, char* lightPatternFile, std::vector<UNCRZ_texture*>* textureList)
 	{
@@ -8385,31 +8384,64 @@ struct uiItem
 {
 public:
 	std::string name;
-	bool focused;
 	bool enabled; // false initially
+	bool visible; // true initially
 	bool clickable; // false initially
 	RECT rect;
 
 	std::vector<uiItem*> uiItems;
 	uiItem* parent;
 
+	bool drawChildren; // true by default
+	bool updateChildren; // true by default
+	bool tapChildren; // true by default
+
+	bool focused; // false initially
 	bool needsUpdate; // true initially
 
 	// clc - this is stuff that is calculated in update()
 	RECT clcRect;
 	// end clc
 
+	uiItem()
+	{
+		// never use
+	}
+
+	uiItem(char* nameN, uiItem* parentN, RECT rectN)
+	{
+		enabled = false;
+		visible = false;
+		clickable = false;
+
+		drawChildren = true;
+		updateChildren = true;
+		tapChildren = true;
+
+		focused = false;
+		needsUpdate = true;
+
+		name = nameN;
+		parent = parentN;
+		if (parent != NULL)
+			parent->uiItems.push_back(this);
+		rect = rectN;
+	}
+
 	bool getTaped(float x, float y, uiItem** tapedOut, float* xOut, float* yOut)
 	{
 		if (x >= clcRect.left && x <= clcRect.right && y >= clcRect.top && y <= clcRect.bottom)
 		{
-			// check children - count backwards
-			for (int i = uiItems.size() - 1; i >= 0; i--)
+			if (tapChildren)
 			{
-				uiItem* uii = uiItems[i];
-				if (uii->enabled && uii->getTaped(x, y, tapedOut, xOut, yOut))
+				// check children - count backwards
+				for (int i = uiItems.size() - 1; i >= 0; i--)
 				{
-					return true; // stop on the first child to be taped
+					uiItem* uii = uiItems[i];
+					if (uii->enabled && uii->getTaped(x, y, tapedOut, xOut, yOut))
+					{
+						return true; // stop on the first child to be taped
+					}
 				}
 			}
 
@@ -8460,11 +8492,14 @@ public:
 			needsUpdate = false;
 		}
 
-		// update children
-		generateChildOffsets(&offsetX, &offsetY);
-		for each (uiItem* uii in uiItems)
+		if (updateChildren)
 		{
-			uii->update(offsetX, offsetY, vt, force); // stop on the first child to be taped
+			// update children
+			generateChildOffsets(&offsetX, &offsetY);
+			for each (uiItem* uii in uiItems)
+			{
+				uii->update(offsetX, offsetY, vt, force); // stop on the first child to be taped
+			}
 		}
 	}
 
@@ -8475,9 +8510,12 @@ public:
 
 		drawMe(dxDevice);
 
-		for each (uiItem* uii in uiItems)
+		if (drawChildren)
 		{
-			uii->draw(dxDevice);
+			for each (uiItem* uii in uiItems)
+			{
+				uii->draw(dxDevice);
+			}
 		}
 	}
 
@@ -8523,11 +8561,8 @@ public:
 		// never use this
 	}
 
-	uiBlankItem(RECT rectN)
+	uiBlankItem(RECT rectN) : uiItem("", NULL, rectN)
 	{
-		focused = false;
-		needsUpdate = true;
-		rect = rectN;
 	}
 
 	virtual void updateMe(viewTrans *vt) override
@@ -8560,20 +8595,10 @@ public:
 	}
 
 	// text constructor
-	uiTextItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, RECT rectN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN)
+	uiTextItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, RECT rectN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN) : uiItem(nameN, parentN, rectN)
 	{
-		focused = false;
-
 		textAlign = DT_LEFT;
 
-		needsUpdate = true;
-
-		name = nameN;
-		parent = parentN;
-		if (parent != NULL)
-			parent->uiItems.push_back(this);
-		enabled = false;
-		rect = rectN;
 		font = fontN;
 		textCol = textColN;
 		text = std::string(textN);
@@ -8654,10 +8679,8 @@ public:
 
 	// tex construtor
 	// vertexDecN must be vertexPecPCT
-	uiTexItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+	uiTexItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN)
 	{
-		focused = false;
-
 		texW = -1; // means to assume we don't have this data (may be ignored)
 		texH = -1;
 
@@ -8668,19 +8691,13 @@ public:
 		texHAlignOffset = 0.0f;
 		texVAlignOffset = 0.0f;
 
-		needsUpdate = true;
 		zeroIsh();
 
-		name = nameN;
-		parent = parentN;
-		if (parent != NULL)
-			parent->uiItems.push_back(this);
-		enabled = false;
 		effect = createEffect(dxDevice, effectFileName, VX_PCT, effectFileName, effectList);
 		tech = effect.effect->GetTechniqueByName(techName);
 		loadTexture(dxDevice, TID_tex, texFileName, texFileName != NULL, textureList);
-		rect = rectN;
 		vertexDec = vertexDecN;
+
 		colMod = D3DXVECTOR4(0, 1, 1, 1);
 	}
 
@@ -8942,17 +8959,9 @@ public:
 		// never use this
 	}
 
-	uiCheckItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+	uiCheckItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN)
 	{
-		focused = false;
-
-		name = nameN;
-		parent = parentN;
-		if (parent != NULL)
-			parent->uiItems.push_back(this);
-		enabled = false;
 		clickable = false;
-		rect = rectN;
 
 		// rect doesn't matter, gets changed by updateMe() anyway
 		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
@@ -9052,18 +9061,8 @@ public:
 		// never use this
 	}
 
-	uiTextInputItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+	uiTextInputItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN)
 	{
-		focused = false;
-
-		name = nameN;
-		parent = parentN;
-		if (parent != NULL)
-			parent->uiItems.push_back(this);
-		enabled = false;
-		clickable = false;
-		rect = rectN;
-
 		// rect doesn't matter, gets changed by updateMe() anyway
 		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
 		box.enabled = true;
@@ -9235,18 +9234,8 @@ public:
 		// never use this
 	}
 
-	uiButtonItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+	uiButtonItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN)
 	{
-		focused = false;
-
-		name = nameN;
-		parent = parentN;
-		if (parent != NULL)
-			parent->uiItems.push_back(this);
-		enabled = false;
-		clickable = false;
-		rect = rectN;
-
 		// rect doesn't matter, gets changed by updateMe() anyway
 		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
 		box.enabled = true;
@@ -9306,6 +9295,121 @@ public:
 		return UIF_keep;
 	}
 };
+
+struct uiRenderer
+{
+public:
+	std::string name;
+	int texWidth;
+	int texHeight;
+	LPDIRECT3DSURFACE9 targetSurface;
+	LPDIRECT3DTEXTURE9 targetTex;
+	LPDIRECT3DSURFACE9 zSurface;
+	
+	bool clearTarget;
+	D3DCOLOR clearColor;
+
+	std::vector<uiItem*> uiItems;
+
+	uiRenderer(char* nameN, bool doClear, D3DCOLOR clearColN)
+	{
+		name = nameN;
+		clearTarget = doClear;
+		clearColor = clearColN;
+	}
+
+	void init(LPDIRECT3DDEVICE9 dxDevice, int texWidthN, int texHeightN, D3DFORMAT targetFormat)
+	{
+		texWidth = texWidthN;
+		texHeight = texHeightN;
+		D3DXCreateTexture(dxDevice, texWidth, texHeight, 0, D3DUSAGE_RENDERTARGET, targetFormat, D3DPOOL_DEFAULT, &targetTex);
+		targetTex->GetSurfaceLevel(0, &targetSurface);
+	}
+
+	void init(LPDIRECT3DSURFACE9 targetSurfaceN)
+	{
+		targetSurface = targetSurfaceN;
+	}
+
+	void initStencil(LPDIRECT3DSURFACE9 zSurfaceN)
+	{
+		zSurface = zSurfaceN;
+	}
+
+	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
+	{
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, UNCRZ_STDSAMPLE, 0, TRUE, &zSurface, NULL);
+	}
+
+	void update(float offsetX, float offsetY, viewTrans* vt, bool force)
+	{
+		for each (uiItem* uii in uiItems)
+		{
+			if (uii->enabled)
+				uii->update(offsetX, offsetY, vt, force);
+		}
+	}
+
+	void draw(LPDIRECT3DDEVICE9 dxDevice)
+	{
+		dxDevice->SetRenderTarget(0, targetSurface);
+		dxDevice->SetDepthStencilSurface(zSurface);
+
+		if (clearTarget)
+			dxDevice->Clear(0, NULL, D3DCLEAR_TARGET, clearColor, 1.0f, 0);
+		dxDevice->Clear(0, NULL, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
+
+		dxDevice->SetRenderState(D3DRS_CLIPPING, false);
+
+		dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+		dxDevice->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+		dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+		dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+
+		dxDevice->SetRenderState(D3DRS_ZENABLE, false);
+		dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, false);
+
+		dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+
+		dxDevice->BeginScene();
+
+		for each (uiItem* uii in uiItems)
+		{
+			if (uii->enabled)
+				uii->draw(dxDevice);
+		}
+
+		dxDevice->EndScene();
+	}
+};
+
+struct uiRenderedItem : uiTexItem
+{
+public:
+	uiRenderedItem()
+	{
+		// never use this
+	}
+
+	uiRenderedItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, int texWN, int texHN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiTexItem(dxDevice, nameN, parentN, vertexDecN, effectFileName, techName, texFileName, rectN, effectList, textureList)
+	{
+		drawChildren = false; // uiRenderer should sort this out
+		updateChildren = false; // uiRenderer should sort this out
+		tapChildren = true;
+
+		texW = texWN; // means to assume we don't have this data (may be ignored)
+		texH = texHN;
+
+		texMode = TXM_flat; // could be handling mis-fit textures
+		texAlign = TXA_fillh | TXA_fillv; // (0)
+		texScaleX = 1.0f;
+		texScaleY = 1.0f;
+		texHAlignOffset = 0.0f;
+		texVAlignOffset = 0.0f;
+	}
+};
+
+
 
 void drawData::startTimer(bool preFlushDx)
 	{
@@ -9449,14 +9553,14 @@ public:
 		targetSurface = targetSurfaceN;
 	}
 
-	void initStencil(LPDIRECT3DDEVICE9 dxDevice, LPDIRECT3DSURFACE9 zSurfaceN)
+	void initStencil(LPDIRECT3DSURFACE9 zSurfaceN)
 	{
 		zSurface = zSurfaceN;
 	}
 
 	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
 	{
-		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, UNCRZ_STDSAMPLE, 0, TRUE, &zSurface, NULL);
 	}
 
 	void dirNormalAt(D3DXVECTOR3 camTarg)
@@ -9552,14 +9656,14 @@ public:
 		overTech = effect.effect->GetTechniqueByName(techName);
 	}
 
-	void initStencil(LPDIRECT3DDEVICE9 dxDevice, LPDIRECT3DSURFACE9 zSurfaceN)
+	void initStencil(LPDIRECT3DSURFACE9 zSurfaceN)
 	{
 		zSurface = zSurfaceN;
 	}
 
 	void initStencil(LPDIRECT3DDEVICE9 dxDevice)
 	{
-		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
+		dxDevice->CreateDepthStencilSurface(texWidth, texHeight, D3DFMT_D16, UNCRZ_STDSAMPLE, 0, TRUE, &zSurface, NULL);
 	}
 };
 
@@ -9592,6 +9696,7 @@ UNCRZ_sprite* laserSprite;
 
 // ui
 std::vector<uiItem*> uiItems;
+uiRenderer* mainUiRenderer; // shares uiItems as above
 uiItem* focusItem;
 viewTrans mainVt;
 uiTexItem* mainView;
@@ -9953,7 +10058,7 @@ int WINAPI WinMain(HINSTANCE hInstance,
 	mainDxDevice = initDevice(hWnd);
 	initVertexDec(mainDxDevice);
 	initEffect(mainDxDevice); // Enable to test for shader errors
-	initTextures(mainDxDevice);
+	initTextures(mainDxDevice); // want to do this early, everything relies on this setup
 	initViews(mainDxDevice);
 	initOvers(mainDxDevice);
 	initLights(mainDxDevice);
@@ -11181,7 +11286,7 @@ LPDIRECT3DDEVICE9 initDevice(HWND hWnd)
 	dxPresParams.AutoDepthStencilFormat = D3DFMT_D16;
     dxPresParams.PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT;
 	dxPresParams.MultiSampleType = D3DMULTISAMPLE_NONE;
-	dxPresParams.MultiSampleType = D3DMULTISAMPLE_4_SAMPLES;
+	dxPresParams.MultiSampleType = UNCRZ_STDSAMPLE;
 	
 	//dxPresParams.BackBufferWidth = 1600;
 	//dxPresParams.BackBufferHeight = 1200;
@@ -11779,6 +11884,11 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 		tempText->clickable = false;
 		genericLabel[i] = tempText;
 	}
+
+	mainUiRenderer = new uiRenderer("mainuirenderer", false, 0);
+	mainUiRenderer->init(finalTargetSurface);
+	mainUiRenderer->initStencil(zSurface);
+	mainUiRenderer->uiItems = uiItems;
 }
 
 void initEffect(LPDIRECT3DDEVICE9 dxDevice)
@@ -12337,7 +12447,7 @@ void drawUi(LPDIRECT3DDEVICE9 dxDevice)
 		drawPresentLabel->text = "Present:  " + std::string(itoa((int)(hrdrawPresentTime / hrdrawTime * 100.0), (char*)&buff, 10)) + "%";
 		drawPresentBar->rect.right = 10 + (int)((float)(debugView->rect.right - debugView->rect.left - 20) * hrdrawPresentTime / hrdrawTime);
 		
-		debugView->needsUpdate = true;
+		debugView->needsUpdate = true; // will force update of all children
 		genericDebugView->needsUpdate = true;
 	}
 	else
@@ -12346,26 +12456,13 @@ void drawUi(LPDIRECT3DDEVICE9 dxDevice)
 		genericDebugView->enabled = false;
 	}
 
-	// down to drawing
-	dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-	dxDevice->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-	dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-	dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-
-	//dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-
-	dxDevice->SetRenderState(D3DRS_ZENABLE, false);
-	dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, false);
-
-	dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-
+	// update and draw
 	for each (uiItem* uii in uiItems)
 	{
 		if (uii->enabled)
 			uii->update(0, 0, &mainVt, false);
-		if (uii->enabled)
-			uii->draw(dxDevice);
 	}
+	mainUiRenderer->draw(dxDevice);
 
 	// disable all the generics
 	for (int i = 0; i < genericUiCount; i++)
@@ -12588,40 +12685,7 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 		DEBUG_DX_FLUSH();
 		DEBUG_HR_END(&hrsbstart, &hrsbend, &hrdrawOverTime);
 		
-	}
-	else // if (disableOpenTarget)
-	{
-		// this bit replicates init that drawTargetOverFinalTarget() would do otherwise
-		/*D3DVIEWPORT9 finalVp = createViewPort(1.0);
-
-		//D3DXMATRIX idMat;
-		//D3DXMatrixIdentity(&idMat);
-		dxDevice->SetRenderTarget(0, finalTargetSurface);
-		dxDevice->SetDepthStencilSurface(zSurface);
-
-		dxDevice->SetViewport(&finalVp);
-
-		dxDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 100, 200), 1.0f, 0);
-		dxDevice->Clear(0, NULL, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
-
-		dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-		dxDevice->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
-		dxDevice->SetRenderState(D3DRS_ZENABLE, false);
-		dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, false);
-
-		dxDevice->BeginScene();*/
-
-		moveCamera(dxDevice);
-
-		dxDevice->SetRenderTarget(0, finalTargetSurface);
-		dxDevice->SetDepthStencilSurface(zSurface);
-
-		dxDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
-		dxDevice->Clear(0, NULL, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
-		dxDevice->SetRenderState(D3DRS_ZENABLE, false);
-		dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-		dxDevice->BeginScene();
-
+		dxDevice->EndScene();
 	}
 
 	DEBUG_HR_START(&hrsbstart);
@@ -12637,8 +12701,6 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 	int winHeight = crect.bottom - crect.top;
 	mainVt = viewTrans(vpWidth, vpHeight, winWidth, winHeight);
 
-
-	dxDevice->EndScene();
 
 	DEBUG_HR_START(&hrsbstart);
 	dxDevice->Present(NULL, NULL, NULL, NULL);
@@ -13069,15 +13131,15 @@ void initTextures(LPDIRECT3DDEVICE9 dxDevice)
 	// side
 	D3DXCreateTexture(dxDevice, vp.Width * targetTexScale, vp.Height * targetTexScale, 0, D3DUSAGE_RENDERTARGET, D3DFMT_A8B8G8R8, D3DPOOL_DEFAULT, &sideTex);
 	sideTex->GetSurfaceLevel(0, &sideSurface);
-	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSideSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, UNCRZ_STDSAMPLE, 0, TRUE, &zSideSurface, NULL);
 	
 	// target
 	D3DXCreateTexture(dxDevice, vp.Width * targetTexScale, vp.Height * targetTexScale, 0, D3DUSAGE_RENDERTARGET, D3DFMT_A8B8G8R8, D3DPOOL_DEFAULT, &targetTex);
 	targetTex->GetSurfaceLevel(0, &targetSurface);
-	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * targetTexScale, vp.Height * targetTexScale, D3DFMT_D16, UNCRZ_STDSAMPLE, 0, TRUE, &zSurface, NULL);
 	
 	// light
-	dxDevice->CreateDepthStencilSurface(vp.Width * lightTexScale, vp.Height * lightTexScale, D3DFMT_D16, D3DMULTISAMPLE_4_SAMPLES, 0, TRUE, &zLightSurface, NULL);
+	dxDevice->CreateDepthStencilSurface(vp.Width * lightTexScale, vp.Height * lightTexScale, D3DFMT_D16, UNCRZ_STDSAMPLE, 0, TRUE, &zLightSurface, NULL);
 
 	HRESULT res;
 	//res = D3DXCreateTextureFromFile(dxDevice, "ripples.tga", &ripplesTex);
@@ -13099,7 +13161,7 @@ void initViews(LPDIRECT3DDEVICE9 dxDevice)
 	tempView->camPos += D3DXVECTOR3(0.5, 0, -0.5);
 	tempView->dirNormalAt(D3DXVECTOR3(0, 1, 0));
 	tempView->init(dxDevice, vpWidth * targetTexScale, vpHeight * targetTexScale, D3DFMT_A8B8G8R8);
-	tempView->initStencil(dxDevice, zSurface);
+	tempView->initStencil(zSurface);
 	tempView->dimX = FOV;
 	tempView->dimY = vpWidth / (float)vpHeight;// / 2.0;
 	tempView->viewMode = VM_persp;
@@ -13124,7 +13186,7 @@ void initOvers(LPDIRECT3DDEVICE9 dxDevice)
 
 	tempOver = new UNCRZ_over("main");
 	tempOver->init(dxDevice, vpWidth * targetTexScale, vpHeight * targetTexScale, "un_shade.fx", "over_final", &effects, D3DFMT_A8B8G8R8);
-	tempOver->initStencil(dxDevice, zSurface);
+	tempOver->initStencil(zSurface);
 	tempOver->useTex = true; // write a "loadtex" func or something?
 	createTexture(dxDevice, "view_main", &tempOver->tex, &textures);
 	tempOver->alphaMode = AM_none;
