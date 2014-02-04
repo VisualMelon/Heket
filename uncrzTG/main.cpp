@@ -8281,31 +8281,31 @@ struct uiEvent
 {
 private:
 	bool consumed;
-	bool dataOnHeap;
-	uiEvent* next;
 
 public:
+	uiItem* uii;
 	DWORD action;
 	DWORD* data;
 	int datalen;
 
-	uiEvent(DWORD actionN)
+	uiEvent(uiItem* uiiN, DWORD actionN)
 	{
+		uii = uiiN;
 		action = actionN;
 		data = NULL;
 		datalen = 0;
-		dataOnHeap = false;
-		next = NULL;
 		consumed = false;
 	}
 
-	uiEvent(DWORD actionN, DWORD* dataN, int datalenN, bool dataOnHeapN)
+	// copies dataN
+	uiEvent(uiItem* uiiN, DWORD actionN, DWORD* dataN, int datalenN)
 	{
+		uii = uiiN;
 		action = actionN;
-		data = dataN;
+		data = new DWORD[datalenN];
+		for (int i = 0; i < datalenN; i++)
+			data[i] = dataN[i];
 		datalen = datalenN;
-		dataOnHeap = dataOnHeapN;
-		next = NULL;
 		consumed = false;
 	}
 
@@ -8319,41 +8319,9 @@ public:
 		return consumed;
 	}
 
-	// should not append after moving
-	void append(uiEvent* nextN)
-	{
-		if (next == NULL)
-			next = nextN;
-		else
-			next->append(nextN);
-	}
-
-	bool move()
-	{
-		if (consumed)
-		{
-			release();
-			if (next == NULL)
-				return false;
-			else
-			{
-				action = next->action;
-				data = next->data;
-				dataOnHeap = next->dataOnHeap;
-				uiEvent* nnext = next->next;
-				delete(next);
-				next = nnext;
-			}
-		}
-		else
-			consumed = true;
-
-		return true;
-	}
-
 	void release()
 	{
-		if (dataOnHeap)
+		if (datalen > 0)
 			delete[datalen](data);
 	}
 };
@@ -8380,6 +8348,49 @@ const DWORD TXM_fit = 1; // rejects alignment, and everything else really, SIMPL
 const DWORD TXM_zoom = 2; // requires image dimensions, fits inside box
 const DWORD TXM_flat = 3; // requires image dimensions, no scaling
 
+struct uiEventManager
+{
+private:
+	std::vector<uiEvent*> events;
+	int top;
+
+	void purge()
+	{
+		events.erase(events.begin(), events.begin() + top);
+		top = 0;
+	}
+
+public:
+	uiEventManager()
+	{
+		top = 0;
+	}
+
+	// when you push an event, you better have finished using it, 'cause it's gonna get freed
+	void pushEvent(uiEvent* uie)
+	{
+		events.push_back(uie);
+	}
+
+	uiEvent* popEvent()
+	{
+		if (top >= events.size())
+		{
+			purge();
+			return NULL;
+		}
+
+		uiEvent* uie = events[top];
+
+		if (top > 15) // no more than 16 empty spaces
+			purge();
+		else
+			top++;
+
+		return uie;
+	}
+};
+
 struct uiItem
 {
 public:
@@ -8391,6 +8402,7 @@ public:
 
 	std::vector<uiItem*> uiItems;
 	uiItem* parent;
+	uiEventManager* uiem;
 
 	bool drawChildren; // true by default
 	bool updateChildren; // true by default
@@ -8408,7 +8420,7 @@ public:
 		// never use
 	}
 
-	uiItem(char* nameN, uiItem* parentN, RECT rectN)
+	uiItem(char* nameN, uiItem* parentN, RECT rectN, uiEventManager* uiemN)
 	{
 		enabled = true;
 		visible = true;
@@ -8426,7 +8438,21 @@ public:
 		if (parent != NULL)
 			parent->uiItems.push_back(this);
 		rect = rectN;
+		uiem = uiemN;
 	}
+
+protected:
+	void registerUi(DWORD action)
+	{
+		uiem->pushEvent(new uiEvent(this, action));
+	}
+
+	void registerUi(DWORD action, DWORD* data, int datalen)
+	{
+		uiem->pushEvent(new uiEvent(this, action, data, datalen));
+	}
+
+public:
 
 	bool getTaped(float x, float y, uiItem** tapedOut, float* xOut, float* yOut)
 	{
@@ -8564,7 +8590,7 @@ public:
 		// never use this
 	}
 
-	uiBlankItem(RECT rectN) : uiItem("", NULL, rectN)
+	uiBlankItem(RECT rectN, uiEventManager* uiemN) : uiItem("", NULL, rectN, uiemN)
 	{
 	}
 
@@ -8598,7 +8624,7 @@ public:
 	}
 
 	// text constructor
-	uiTextItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, RECT rectN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN) : uiItem(nameN, parentN, rectN)
+	uiTextItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, RECT rectN, uiEventManager* uiemN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN) : uiItem(nameN, parentN, rectN, uiemN)
 	{
 		textAlign = DT_LEFT;
 
@@ -8682,7 +8708,7 @@ public:
 
 	// tex construtor
 	// vertexDecN must be vertexPecPCT
-	uiTexItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN)
+	uiTexItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, uiEventManager* uiemN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN, uiemN)
 	{
 		texW = -1; // means to assume we don't have this data (may be ignored)
 		texH = -1;
@@ -8945,7 +8971,20 @@ public:
 	}
 };
 
-struct uiCheckItem : uiItem
+struct uiCheckable
+{
+public:
+	virtual void setChecked(bool checkedN)
+	{
+	}
+
+	virtual bool isChecked()
+	{
+		return false;
+	}
+};
+
+struct uiCheckItem : uiItem, uiCheckable
 {
 private:
 	bool checked;
@@ -8962,18 +9001,18 @@ public:
 		// never use this
 	}
 
-	uiCheckItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN)
+	uiCheckItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, uiEventManager* uiemN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN, uiemN)
 	{
 		clickable = false;
 
 		// rect doesn't matter, gets changed by updateMe() anyway
-		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
+		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, uiem, effectList, textureList);
 		box.enabled = true;
 		box.colMod = D3DXVECTOR4(1, 1, 1, 1);
 		box.texMode = TXM_fit;
 		box.texAlign = TXA_fillh | TXA_fillv | TXA_pixelOffset;
 
-		label = uiTextItem(dxDevice, "", NULL, rect, labelText, textColN, fontN);
+		label = uiTextItem(dxDevice, "", NULL, rect, uiem, labelText, textColN, fontN);
 		label.enabled = true;
 		label.textAlign = DT_LEFT | DT_VCENTER;
 
@@ -8988,19 +9027,23 @@ public:
 		setChecked(!checked);
 	}
 
-	void setChecked(bool checkedN)
+	virtual void setChecked(bool checkedN) override
 	{
+		if (checked == checkedN)
+			return;
+
 		checked = checkedN;
 
 		if (checked)
 			box.loadTexture(TID_tex, onTex, true);
 		else
 			box.loadTexture(TID_tex, offTex, true);
-
+		
+		registerUi(UIA_stateChange);
 		needsUpdate = true;
 	}
 
-	bool isChecked()
+	virtual bool isChecked() override
 	{
 		return checked;
 	}
@@ -9043,7 +9086,166 @@ public:
 		if (uie->action == UIA_leftDown || uie->action == UIA_rightDown)
 		{
 			toggleChecked();
-			uie->append(new uiEvent(UIA_stateChange));
+		}
+
+		return UIF_keep;
+	}
+};
+
+struct uiRadioGroup
+{
+private:
+	uiCheckable* checkedItem;
+
+public:
+	uiRadioGroup()
+	{
+		clearChecked();
+	}
+
+	void clearChecked()
+	{
+		if (checkedItem != NULL)
+		{
+			checkedItem->setChecked(false);
+			checkedItem = NULL;
+		}
+	}
+
+	void setCheckedItem(uiCheckable* uii)
+	{
+		clearChecked();
+		checkedItem = uii;
+	}
+
+	void registerChecked(uiCheckable* uii, bool checked)
+	{
+		if (checkedItem == uii)
+		{
+			if (!checked)
+			{
+				checkedItem = NULL; // don't call clear to avoid re-calling caller
+			}
+		}
+		else if (checked)
+		{
+			setCheckedItem(uii);
+		}
+	}
+
+	uiCheckable* getCheckedItem()
+	{
+		return checkedItem;
+	}
+};
+
+struct uiRadioItem : uiItem, uiCheckable
+{
+private:
+	bool checked;
+
+	uiTexItem box;
+	uiTextItem label;
+
+	LPDIRECT3DTEXTURE9 onTex;
+	LPDIRECT3DTEXTURE9 offTex;
+
+	uiRadioGroup* uirg;
+
+public:
+	uiRadioItem()
+	{
+		// never use this
+	}
+
+	uiRadioItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, uiEventManager* uiemN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList, uiRadioGroup* uirgN) : uiItem(nameN, parentN, rectN, uiemN)
+	{
+		clickable = false;
+
+		// rect doesn't matter, gets changed by updateMe() anyway
+		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, uiem, effectList, textureList);
+		box.enabled = true;
+		box.colMod = D3DXVECTOR4(1, 1, 1, 1);
+		box.texMode = TXM_fit;
+		box.texAlign = TXA_fillh | TXA_fillv | TXA_pixelOffset;
+
+		label = uiTextItem(dxDevice, "", NULL, rect, uiem, labelText, textColN, fontN);
+		label.enabled = true;
+		label.textAlign = DT_LEFT | DT_VCENTER;
+
+		createTexture(dxDevice, "ui/checkOn.tga", &onTex, textureList); // change to radioOn.tga at some point
+		createTexture(dxDevice, "ui/checkOff.tga", &offTex, textureList); // change to radioOff.tga at some point
+
+		uirg = uirgN;
+
+		setChecked(false);
+	}
+
+	void toggleChecked()
+	{
+		setChecked(!checked);
+	}
+
+	virtual void setChecked(bool checkedN) override
+	{
+		if (checked == checkedN)
+			return;
+
+		checked = checkedN;
+
+		if (checked)
+			box.loadTexture(TID_tex, onTex, true);
+		else
+			box.loadTexture(TID_tex, offTex, true);
+		
+		uirg->registerChecked(this, checked);
+		registerUi(UIA_stateChange);
+		needsUpdate = true;
+	}
+
+	virtual bool isChecked() override
+	{
+		return checked;
+	}
+
+	// clc time - if you want to just update this component, and not it's siblings, parents, etc. then pass the parent clcRext.left and clcRect.top
+	virtual void updateMe(viewTrans* vt) override
+	{
+		int w = rect.bottom - rect.top;
+
+		RECT boxRect;
+		boxRect.left = 0;
+		boxRect.right = w;
+		boxRect.top = 0;
+		boxRect.bottom = w;
+		box.rect = boxRect;
+
+		RECT labelRect;
+		labelRect.left = w + 5;
+		labelRect.right = rect.right;
+		labelRect.top = 0;
+		labelRect.bottom = w;
+		label.rect = labelRect;
+
+		box.update(clcRect.left, clcRect.top, vt, true);
+		label.update(clcRect.left, clcRect.top, vt, true);
+
+		// hack to make this less clickable
+		clcRect = box.clcRect;
+	}
+
+	virtual void drawMe(LPDIRECT3DDEVICE9 dxDevice) override
+	{
+		box.draw(dxDevice);
+		label.draw(dxDevice);
+	}
+	
+	// return true if it should take focus
+	virtual DWORD handleUi(uiEvent* uie, bool keyDown[UI_numkeys]) override
+	{
+		if (uie->action == UIA_leftDown || uie->action == UIA_rightDown)
+		{
+			toggleChecked();
 		}
 
 		return UIF_keep;
@@ -9064,16 +9266,16 @@ public:
 		// never use this
 	}
 
-	uiTextInputItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN)
+	uiTextInputItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* textN, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, RECT rectN, uiEventManager* uiemN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN, uiemN)
 	{
 		// rect doesn't matter, gets changed by updateMe() anyway
-		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
+		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, uiem, effectList, textureList);
 		box.enabled = true;
 		box.colMod = D3DXVECTOR4(1, 1, 1, 1);
 		box.texMode = TXM_fit;
 		box.texAlign = TXA_fillh | TXA_fillv | TXA_pixelOffset;
 
-		label = uiTextItem(dxDevice, "", NULL, rect, textN, textColN, fontN);
+		label = uiTextItem(dxDevice, "", NULL, rect, uiem, textN, textColN, fontN);
 		label.enabled = true;
 		label.textAlign = DT_LEFT | DT_TOP;
 
@@ -9217,7 +9419,7 @@ public:
 				return UIF_keep;
 			}
 
-			uie->append(new uiEvent(UIA_stateChange));
+			registerUi(UIA_stateChange);
 			return UIF_keep;
 		}
 
@@ -9237,16 +9439,16 @@ public:
 		// never use this
 	}
 
-	uiButtonItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN)
+	uiButtonItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, uiItem* parentN, char* labelText, D3DCOLOR textColN, LPD3DXFONT fontN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, uiEventManager* uiemN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiItem(nameN, parentN, rectN, uiemN)
 	{
 		// rect doesn't matter, gets changed by updateMe() anyway
-		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, effectList, textureList);
+		box = uiTexItem(dxDevice, "", NULL, vertexDecN, effectFileName, techName, NULL, rect, uiem, effectList, textureList);
 		box.enabled = true;
 		box.colMod = D3DXVECTOR4(1, 1, 1, 1);
 		box.texMode = TXM_fit;
 		box.texAlign = TXA_fillh | TXA_fillv | TXA_pixelOffset;
 
-		label = uiTextItem(dxDevice, "", NULL, rect, labelText, textColN, fontN);
+		label = uiTextItem(dxDevice, "", NULL, rect, uiem, labelText, textColN, fontN);
 		label.enabled = true;
 		label.textAlign = DT_CENTER | DT_VCENTER;
 
@@ -9293,12 +9495,13 @@ public:
 		if (uie->action == UIA_leftDown)
 		{
 			needsUpdate = true;
-			uie->append(new uiEvent(UIA_cmd)); // dispatch a cmd event
+			registerUi(UIA_cmd); // dispatch a cmd event
 		}
 		return UIF_keep;
 	}
 };
 
+// joy of joys!
 struct uiRenderer
 {
 public:
@@ -9385,6 +9588,7 @@ public:
 	}
 };
 
+// very much untested
 struct uiRenderedItem : uiTexItem
 {
 public:
@@ -9393,7 +9597,7 @@ public:
 		// never use this
 	}
 
-	uiRenderedItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, int texWN, int texHN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiTexItem(dxDevice, nameN, parentN, vertexDecN, effectFileName, techName, texFileName, rectN, effectList, textureList)
+	uiRenderedItem(LPDIRECT3DDEVICE9 dxDevice, char* nameN, int texWN, int texHN, uiItem* parentN, LPDIRECT3DVERTEXDECLARATION9 vertexDecN, char* effectFileName, char* techName, char* texFileName, RECT rectN, uiEventManager* uiemN, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList) : uiTexItem(dxDevice, nameN, parentN, vertexDecN, effectFileName, techName, texFileName, rectN, uiemN, effectList, textureList)
 	{
 		drawChildren = false; // uiRenderer should sort this out
 		updateChildren = false; // uiRenderer should sort this out
@@ -9697,6 +9901,7 @@ UNCRZ_sprite_buffer sbuff;
 UNCRZ_sprite* laserSprite;
 
 // ui
+uiEventManager mainUiem;
 std::vector<uiItem*> uiItems;
 uiRenderer* mainUiRenderer; // shares uiItems as above
 uiItem* focusItem;
@@ -9793,8 +9998,10 @@ void deSelect();
 void preventInput(float);
 bool takeInput();
 void eval();
-void handleUi(uiItem*, DWORD);
-void handleUi(uiItem*, uiEvent*);
+void registerUi(DWORD);
+void registerUi(uiEvent*);
+void handleUiEvents(uiEventManager*);
+void handleUi(uiEvent*);
 void reload(LPDIRECT3DDEVICE9);
 void g_align(float, float, bool);
 void g_startGo();
@@ -10533,7 +10740,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly };
-			handleUi(tapedUii, new uiEvent(UIA_mousemove, hudat, 2, false));
+			registerUi(new uiEvent(tapedUii, UIA_mousemove, hudat, 2));
 			break;
 		}
 		break;
@@ -10548,7 +10755,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly};
-			handleUi(tapedUii, new uiEvent(UIA_leftDown, hudat, 2, false));
+			registerUi(new uiEvent(tapedUii, UIA_leftDown, hudat, 2));
 			break;
 		}
 		break;
@@ -10563,7 +10770,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly };
-			handleUi(tapedUii, new uiEvent(UIA_rightDown, hudat, 2, false));
+			registerUi(new uiEvent(tapedUii, UIA_rightDown, hudat, 2));
 			break;
 		}
 		break;
@@ -10578,7 +10785,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly};
-			handleUi(tapedUii, new uiEvent(UIA_leftUp, hudat, 2, false));
+			registerUi(new uiEvent(tapedUii, UIA_leftUp, hudat, 2));
 			break;
 		}
 		break;
@@ -10593,7 +10800,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (tapedUii != NULL)
 		{
 			DWORD hudat[2] = { lx, ly };
-			handleUi(tapedUii, new uiEvent(UIA_rightUp, hudat, 2, false));
+			registerUi(new uiEvent(tapedUii, UIA_rightUp, hudat, 2));
 			break;
 		}
 		break;
@@ -10603,7 +10810,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			keyDown[wParam] = true;
 
 			DWORD hudat[1] = { (DWORD)wParam };
-			handleUi(focusItem, new uiEvent(UIA_keyDown, hudat, 1, false));
+			registerUi(new uiEvent(focusItem, UIA_keyDown, hudat, 1));
 		}
 		break;
 	case WM_KEYUP:
@@ -10612,7 +10819,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			keyDown[wParam] = false;
 
 			DWORD hudat[1] = { (DWORD)wParam };
-			handleUi(focusItem, new uiEvent(UIA_keyUp, hudat, 1, false));
+			registerUi(new uiEvent(focusItem, UIA_keyUp, hudat, 1));
 		}
 		break;
 	case WM_DESTROY:
@@ -10738,8 +10945,9 @@ void setFocus(uiItem* focusN)
 }
 
 // dodgy stuff
-void handleUiBefore(uiItem* uii, uiEvent* uie)
+void handleUiBefore(uiEvent* uie)
 {
+	uiItem* uii = uie->uii;
 	DWORD action = uie->action;
 	DWORD* data = uie->data;
 
@@ -10749,8 +10957,12 @@ void handleUiBefore(uiItem* uii, uiEvent* uie)
 }
 
 // less dodgy stuff - not allowed to mess with the uiEvent
-void handleUiAfter(uiItem* uii, DWORD action, DWORD* data)
+void handleUiAfter(uiEvent* uie)
 {
+	uiItem* uii = uie->uii;
+	DWORD action = uie->action;
+	DWORD* data = uie->data;
+
 	RECT crect;
 	D3DVIEWPORT9 vp;
 	D3DXMATRIX mehMatrix;
@@ -11071,24 +11283,40 @@ void handleUiAfter(uiItem* uii, DWORD action, DWORD* data)
 	}
 }
 
-void handleUi(uiItem* uii, DWORD action)
+void registerUi(uiItem* uii, DWORD action)
 {
-	handleUi(uii, new uiEvent(action));
+	registerUi(new uiEvent(uii, action));
 }
 
-void handleUi(uiItem* uii, uiEvent* uie)
+void registerUi(uiEvent* uie)
 {
-	handleUiBefore(uii, uie); // can consume, preventing it getting to the uiItem
+	mainUiem.pushEvent(uie);
+}
+
+void handleUiEvents(uiEventManager* uiem)
+{
+	uiEvent* uie;
+	while ((uie = uiem->popEvent()) != NULL)
+	{
+		handleUi(uie);
+		uie->release();
+		free(uie);
+	}
+}
+
+void handleUi(uiEvent* uie)
+{
+	handleUiBefore(uie); // can consume, preventing it getting to the uiItem
 	if (uie->wasConsumed())
 		return;
 
-	if (uii != NULL)
+	if (uie->uii != NULL)
 	{
-		DWORD uif = uii->handleUi(uie, keyDown);
+		DWORD uif = uie->uii->handleUi(uie, keyDown);
 
 		if (uif == UIF_clear)
 			setFocus(NULL);
-		else if (uii == focusItem)
+		else if (uie->uii == focusItem)
 		{
 			if (uif == UIF_lose)
 				setFocus(NULL);
@@ -11096,14 +11324,15 @@ void handleUi(uiItem* uii, uiEvent* uie)
 		else
 		{
 			if (uif == UIF_gain)
-				setFocus(uii);
+				setFocus(uie->uii);
 			else if (uif == UIF_keepOrClear)
 				setFocus(NULL);
 		}
 	}
+	if (uie->wasConsumed())
+		return;
 
-	while (uie->move())
-		handleUiAfter(uii, uie->action, uie->data);
+	handleUiAfter(uie);
 }
 
 float compTime(LARGE_INTEGER a, LARGE_INTEGER b)
@@ -11149,7 +11378,8 @@ void eval()
 		}
 	}
 
-	handleUi(focusItem, UIA_tick);
+	registerUi(focusItem, UIA_tick);
+	handleUiEvents(&mainUiem);
 
 	float distRes;
 	D3DXVECTOR3 nearVec, farVec, rayDir;
@@ -11365,7 +11595,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = winWidth;// + 1;
 	rect.top = 0;
 	rect.bottom = winHeight;// + 1;
-	tempTex = new uiTexItem(dxDevice, "mainover", NULL, vertexDecPCT, "un_shade.fx", "over_final", "over_main", rect, &effects, &textures);	
+	tempTex = new uiTexItem(dxDevice, "mainover", NULL, vertexDecPCT, "un_shade.fx", "over_final", "over_main", rect, &mainUiem, &effects, &textures);	
 	tempTex->clickable = true; // NEED to work out why these shaders are so whiney (simpleUi uses linear sampler, can't do linear sample on render target?)
 	uiItems.push_back(tempTex);
 	tempTex->colMod = D3DXVECTOR4(1, 1, 1, 1);
@@ -11378,7 +11608,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = winWidth;// + 1;
 	rect.top = 0;
 	rect.bottom = 40;
-	tempTex = new uiTexItem(dxDevice, "banner", mainView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/banner.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "banner", mainView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/banner.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->clickable = true;
 	tempTex->colMod = D3DXVECTOR4(1, 1, 1, 1);
 
@@ -11386,7 +11616,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = winWidth + 1;
 	rect.top = 0;
 	rect.bottom = 35;
-	tempText = new uiTextItem(dxDevice, "bannertext", mainView, rect, "Silver's Turn", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "bannertext", mainView, rect, &mainUiem, "Silver's Turn", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	tempText->textAlign = DT_CENTER | DT_VCENTER;
 	bannerText = tempText;
@@ -11396,7 +11626,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = winWidth;// + 1;
 	rect.top = 40;
 	rect.bottom = winHeight;// + 1;
-	tempTex = new uiTexItem(dxDevice, "testness", NULL, vertexDecPCT, "un_shade.fx", "simpleUiBorder", "white_bordered.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "testness", NULL, vertexDecPCT, "un_shade.fx", "simpleUiBorder", "white_bordered.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->enabled = false;
 	tempTex->visible = false;
 	tempTex->clickable = false;
@@ -11414,7 +11644,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = winWidth - 200;
 	rect.top = 200;
 	rect.bottom = winHeight - 200;
-	tempTex = new uiTexItem(dxDevice, "debugItem", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "debugItem", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->visible = false;
 	tempTex->clickable = false;
 	uiItems.push_back(tempTex);
@@ -11425,7 +11655,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 200;
 	rect.top = 70;
 	rect.bottom = 90;
-	tempButton = new uiButtonItem(dxDevice, "restartButton", menuView, "Restart", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", NULL, rect, &effects, &textures);
+	tempButton = new uiButtonItem(dxDevice, "restartButton", menuView, "Restart", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", NULL, rect, &mainUiem, &effects, &textures);
 	tempButton->clickable = true;
 	g_restart = tempButton;
 
@@ -11433,7 +11663,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 500;
 	rect.top = 100;
 	rect.bottom = 120;
-	tempCheck = new uiCheckItem(dxDevice, "autoalignCheck", menuView, "Auto Align View", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &effects, &textures);
+	tempCheck = new uiCheckItem(dxDevice, "autoalignCheck", menuView, "Auto Align View", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures);
 	tempCheck->clickable = true;
 	g_autoAlign = tempCheck;
 	g_autoAlign->setChecked(true);
@@ -11442,7 +11672,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 500;
 	rect.top = 130;
 	rect.bottom = 150;
-	tempTextInput = new uiTextInputItem(dxDevice, "testtextinput", menuView, "", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &effects, &textures);
+	tempTextInput = new uiTextInputItem(dxDevice, "testtextinput", menuView, "", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures);
 	tempTextInput->clickable = true;
 
 	// debug view
@@ -11450,7 +11680,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 395;
 	rect.top = 45;
 	rect.bottom = 500;
-	tempTex = new uiTexItem(dxDevice, "debugItem", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "debugItem", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->visible = false;
 	tempTex->clickable = false;
 	uiItems.push_back(tempTex);
@@ -11462,7 +11692,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10;
 	rect.top = 10;
 	rect.bottom = debugView->rect.bottom - debugView->rect.top - 10;
-	tempTex = new uiTexItem(dxDevice, "vlineLeft", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "vlineLeft", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0, 0, 0, 1);
 	tempTex->clickable = false;
 
@@ -11470,7 +11700,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = debugView->rect.right - debugView->rect.left - 9;
 	rect.top = 10;
 	rect.bottom = debugView->rect.bottom - debugView->rect.top - 10;
-	tempTex = new uiTexItem(dxDevice, "vlineLeft", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "vlineLeft", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0, 0, 0, 1);
 	tempTex->enabled = true;
 	tempTex->clickable = false;
@@ -11481,7 +11711,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 210;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "fpsLabel", debugView, rect, "~~ fps ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "fpsLabel", debugView, rect, &mainUiem, "~~ fps ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	fpsLabel = tempText;
 
@@ -11491,7 +11721,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "frameTimeBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "frameTimeBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(1, 1, 1, 1);
 	tempTex->clickable = false;
 	frameTimeBar = tempTex;
@@ -11500,7 +11730,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "frameTimeLabel", debugView, rect, "~~ frame time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "frameTimeLabel", debugView, rect, &mainUiem, "~~ frame time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	frameTimeLabel = tempText;
 
@@ -11510,7 +11740,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "evalTimeBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "evalTimeBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(1, 0, 0, 1);
 	tempTex->clickable = false;
 	evalTimeBar = tempTex;
@@ -11519,7 +11749,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "evalTimeLabel", debugView, rect, "~~ eval time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "evalTimeLabel", debugView, rect, &mainUiem, "~~ eval time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	evalTimeLabel = tempText;
 
@@ -11529,7 +11759,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "evalPlacingBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "evalPlacingBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 1);
 	tempTex->clickable = false;
 	evalPlacingBar = tempTex;
@@ -11538,7 +11768,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "evalPlacingLabel", debugView, rect, "~~ eval placing time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "evalPlacingLabel", debugView, rect, &mainUiem, "~~ eval placing time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	evalPlacingLabel = tempText;
 
@@ -11548,7 +11778,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "evalSpritesBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "evalSpritesBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 1);
 	tempTex->clickable = false;
 	evalSpritesBar = tempTex;
@@ -11557,7 +11787,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "evalSpritesLabel", debugView, rect, "~~ eval sprites time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "evalSpritesLabel", debugView, rect, &mainUiem, "~~ eval sprites time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	evalSpritesLabel = tempText;
 
@@ -11567,7 +11797,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "evalObjsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "evalObjsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 1);
 	tempTex->clickable = false;
 	evalObjsBar = tempTex;
@@ -11576,7 +11806,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "evalObjsLabel", debugView, rect, "~~ draw sprites time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "evalObjsLabel", debugView, rect, &mainUiem, "~~ draw sprites time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	evalObjsLabel = tempText;
 
@@ -11586,7 +11816,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawTimeBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawTimeBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0, 1, 0, 1);
 	tempTex->clickable = false;
 	drawTimeBar = tempTex;
@@ -11595,7 +11825,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawTimeLabel", debugView, rect, "~~ draw time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawTimeLabel", debugView, rect, &mainUiem, "~~ draw time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawTimeLabel = tempText;
 
@@ -11605,7 +11835,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawAnimsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawAnimsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawAnimsBar = tempTex;
@@ -11614,7 +11844,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawAnimsLabel", debugView, rect, "~~ draw anims time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawAnimsLabel", debugView, rect, &mainUiem, "~~ draw anims time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawAnimsLabel = tempText;
 
@@ -11624,7 +11854,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawUpdateBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawUpdateBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawUpdateBar = tempTex;
@@ -11633,7 +11863,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawUpdateLabel", debugView, rect, "~~ draw update time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawUpdateLabel", debugView, rect, &mainUiem, "~~ draw update time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawUpdateLabel = tempText;
 
@@ -11643,7 +11873,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawLightsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawLightsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawLightsBar = tempTex;
@@ -11652,7 +11882,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawLightsLabel", debugView, rect, "~~ draw lights time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawLightsLabel", debugView, rect, &mainUiem, "~~ draw lights time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawLightsLabel = tempText;
 
@@ -11662,7 +11892,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawTerrainBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawTerrainBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawTerrainBar = tempTex;
@@ -11671,7 +11901,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawTerrainLabel", debugView, rect, "~~ draw terrain time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawTerrainLabel", debugView, rect, &mainUiem, "~~ draw terrain time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawTerrainLabel = tempText;
 
@@ -11681,7 +11911,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawCloudsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawCloudsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawCloudsBar = tempTex;
@@ -11690,7 +11920,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawCloudsLabel", debugView, rect, "~~ draw cloud time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawCloudsLabel", debugView, rect, &mainUiem, "~~ draw cloud time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawCloudsLabel = tempText;
 
@@ -11700,7 +11930,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawObjsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawObjsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawObjsBar = tempTex;
@@ -11709,7 +11939,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawObjsLabel", debugView, rect, "~~ draw objs time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawObjsLabel", debugView, rect, &mainUiem, "~~ draw objs time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawObjsLabel = tempText;
 
@@ -11719,7 +11949,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawSpritesBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawSpritesBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawSpritesBar = tempTex;
@@ -11728,7 +11958,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawSpritesLabel", debugView, rect, "~~ draw sprites time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawSpritesLabel", debugView, rect, &mainUiem, "~~ draw sprites time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawSpritesLabel = tempText;
 
@@ -11738,7 +11968,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawOverBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawOverBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawOverBar = tempTex;
@@ -11747,7 +11977,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawOverLabel", debugView, rect, "~~ draw over time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawOverLabel", debugView, rect, &mainUiem, "~~ draw over time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawOverLabel = tempText;
 
@@ -11757,7 +11987,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawUiBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawUiBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawUiBar = tempTex;
@@ -11766,7 +11996,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawUiLabel", debugView, rect, "~~ draw ui time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawUiLabel", debugView, rect, &mainUiem, "~~ draw ui time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawUiLabel = tempText;
 
@@ -11776,7 +12006,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "drawPresentBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "drawPresentBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0.5, 1, 0.5, 1);
 	tempTex->clickable = false;
 	drawPresentBar = tempTex;
@@ -11785,7 +12015,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "drawPresentLabel", debugView, rect, "~~ draw present time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "drawPresentLabel", debugView, rect, &mainUiem, "~~ draw present time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
 	drawPresentLabel = tempText;
 
@@ -11797,7 +12027,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 620;
 	rect.top = 45;
 	rect.bottom = 500;
-	tempTex = new uiTexItem(dxDevice, "debugView", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "debugView", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->clickable = false;
 	uiItems.push_back(tempTex);
 	tempTex->colMod = D3DXVECTOR4(0, 0.5, 1, 0.5);
@@ -11808,7 +12038,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10;
 	rect.top = 10;
 	rect.bottom = debugView->rect.bottom - debugView->rect.top - 10;
-	tempTex = new uiTexItem(dxDevice, "vlineLeft", genericDebugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "vlineLeft", genericDebugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0, 0, 0, 1);
 	tempTex->clickable = false;
 
@@ -11816,7 +12046,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = debugView->rect.right - debugView->rect.left - 9;
 	rect.top = 10;
 	rect.bottom = debugView->rect.bottom - debugView->rect.top - 10;
-	tempTex = new uiTexItem(dxDevice, "vlineLeft", genericDebugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "vlineLeft", genericDebugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(0, 0, 0, 1);
 	tempTex->clickable = false;
 
@@ -11829,7 +12059,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 		rect.right = 10; // this will change
 		rect.top = dg;
 		rect.bottom = dg + 20;
-		tempTex = new uiTexItem(dxDevice, "", genericDebugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &effects, &textures);
+		tempTex = new uiTexItem(dxDevice, "", genericDebugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 		tempTex->colMod = D3DXVECTOR4(1, 1, 1, 1);
 		tempTex->clickable = false;
 		genericBar[i] = tempTex;
@@ -11838,7 +12068,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 		rect.right = 190;
 		rect.top = dg;
 		rect.bottom = dg + 20;
-		tempText = new uiTextItem(dxDevice, "", genericDebugView, rect, "~~ clint ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+		tempText = new uiTextItem(dxDevice, "", genericDebugView, rect, &mainUiem, "~~ clint ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 		tempText->clickable = false;
 		genericLabel[i] = tempText;
 	}
