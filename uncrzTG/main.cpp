@@ -9100,7 +9100,7 @@ private:
 public:
 	uiRadioGroup()
 	{
-		clearChecked();
+		checkedItem = NULL;
 	}
 
 	void clearChecked()
@@ -9173,17 +9173,12 @@ public:
 		label.enabled = true;
 		label.textAlign = DT_LEFT | DT_VCENTER;
 
-		createTexture(dxDevice, "ui/checkOn.tga", &onTex, textureList); // change to radioOn.tga at some point
-		createTexture(dxDevice, "ui/checkOff.tga", &offTex, textureList); // change to radioOff.tga at some point
+		createTexture(dxDevice, "ui/radioOn.tga", &onTex, textureList);
+		createTexture(dxDevice, "ui/radioOff.tga", &offTex, textureList);
 
 		uirg = uirgN;
 
 		setChecked(false);
-	}
-
-	void toggleChecked()
-	{
-		setChecked(!checked);
 	}
 
 	virtual void setChecked(bool checkedN) override
@@ -9245,7 +9240,7 @@ public:
 	{
 		if (uie->action == UIA_leftDown || uie->action == UIA_rightDown)
 		{
-			toggleChecked();
+			setChecked(true);
 		}
 
 		return UIF_keep;
@@ -9913,6 +9908,7 @@ uiTextItem* bannerText;
 uiTexItem* menuView;
 uiButtonItem* g_restart;
 uiCheckItem* g_autoAlign;
+uiRadioGroup* testRadios;
 
 // debuging (ui items)
 bool debugData = false;
@@ -11587,6 +11583,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	uiTexItem* tempTex;
 	uiTextItem* tempText;
 	uiCheckItem* tempCheck;
+	uiRadioItem* tempRadio;
 	uiTextInputItem* tempTextInput;
 	uiButtonItem* tempButton;
 
@@ -11644,12 +11641,20 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = winWidth - 200;
 	rect.top = 200;
 	rect.bottom = winHeight - 200;
-	tempTex = new uiTexItem(dxDevice, "debugItem", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &mainUiem, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "menuView", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->visible = false;
 	tempTex->clickable = false;
 	uiItems.push_back(tempTex);
 	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 0.5);
 	menuView = tempTex;
+	
+	rect.left = 10;
+	rect.right = menuView->rect.right - menuView->rect.left - 20;
+	rect.top = 10;
+	rect.bottom = 60;
+	tempTex = new uiTexItem(dxDevice, "menuTitle", menuView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/menuTitle.tga", rect, &mainUiem, &effects, &textures);
+	tempTex->clickable = false;
+	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 0.5);
 	
 	rect.left = 10;
 	rect.right = 200;
@@ -11674,6 +11679,30 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.bottom = 150;
 	tempTextInput = new uiTextInputItem(dxDevice, "testtextinput", menuView, "", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures);
 	tempTextInput->clickable = true;
+
+	testRadios = new uiRadioGroup();
+
+	rect.left = 10;
+	rect.right = 500;
+	rect.top = 160;
+	rect.bottom = 180;
+	tempRadio = new uiRadioItem(dxDevice, "Radio0", menuView, "Radio Button 0", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
+	tempRadio->clickable = true;
+	tempRadio->setChecked(true);
+	
+	rect.left = 10;
+	rect.right = 500;
+	rect.top = 190;
+	rect.bottom = 210;
+	tempRadio = new uiRadioItem(dxDevice, "Radio1", menuView, "Radio Button 1", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
+	tempRadio->clickable = true;
+	
+	rect.left = 10;
+	rect.right = 500;
+	rect.top = 220;
+	rect.bottom = 240;
+	tempRadio = new uiRadioItem(dxDevice, "Radio2", menuView, "Radio Button 2", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
+	tempRadio->clickable = true;
 
 	// debug view
 	rect.left = 175;
@@ -11762,6 +11791,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	tempTex = new uiTexItem(dxDevice, "evalPlacingBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 1);
 	tempTex->clickable = false;
+	tempTex->visible = false; // disable for Heket
 	evalPlacingBar = tempTex;
 
 	rect.left = 15;
@@ -11770,6 +11800,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.bottom = dg + 20;
 	tempText = new uiTextItem(dxDevice, "evalPlacingLabel", debugView, rect, &mainUiem, "~~ eval placing time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
+	tempText->visible = false; // disable for Heket
 	evalPlacingLabel = tempText;
 
 	dg += 25;
