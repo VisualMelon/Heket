@@ -9448,7 +9448,7 @@ public:
 		label.textAlign = DT_CENTER | DT_VCENTER;
 
 		if (texFileName == NULL)
-			texFileName = "ui/bland.tga";
+			texFileName = "ui/button.tga";
 
 		box.loadTexture(dxDevice, TID_tex, texFileName, true, textureList  );
 	}
@@ -11637,72 +11637,72 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	tempTex->texScaleY = 1.0f;
 
 	// menu view
-	rect.left = 200;
-	rect.right = winWidth - 200;
-	rect.top = 200;
-	rect.bottom = winHeight - 200;
-	tempTex = new uiTexItem(dxDevice, "menuView", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/bland.tga", rect, &mainUiem, &effects, &textures);
+	rect.left = 150;
+	rect.right = winWidth - 150;
+	rect.top = 150;
+	rect.bottom = winHeight - 150;
+	tempTex = new uiTexItem(dxDevice, "menuView", NULL, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/menu.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->visible = false;
 	tempTex->clickable = false;
 	uiItems.push_back(tempTex);
-	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 0.5);
+	tempTex->colMod = D3DXVECTOR4(1, 1.0, 1.0, 1.0);
 	menuView = tempTex;
 	
-	rect.left = 10;
-	rect.right = menuView->rect.right - menuView->rect.left - 20;
-	rect.top = 10;
-	rect.bottom = 60;
-	tempTex = new uiTexItem(dxDevice, "menuTitle", menuView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/menuTitle.tga", rect, &mainUiem, &effects, &textures);
-	tempTex->clickable = false;
-	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 0.5);
+	//rect.left = 10;
+	//rect.right = menuView->rect.right - menuView->rect.left - 20;
+	//rect.top = 10;
+	//rect.bottom = 60;
+	//tempTex = new uiTexItem(dxDevice, "menuTitle", menuView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/menuTitle.tga", rect, &mainUiem, &effects, &textures);
+	//tempTex->clickable = false;
+	//tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 0.5);
 	
-	rect.left = 10;
-	rect.right = 200;
-	rect.top = 70;
-	rect.bottom = 90;
+	rect.left = 110;
+	rect.right = 280;
+	rect.top = 210;
+	rect.bottom = 240;
 	tempButton = new uiButtonItem(dxDevice, "restartButton", menuView, "Restart", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", NULL, rect, &mainUiem, &effects, &textures);
 	tempButton->clickable = true;
 	g_restart = tempButton;
 
-	rect.left = 10;
-	rect.right = 500;
-	rect.top = 100;
-	rect.bottom = 120;
+	rect.left = 110;
+	rect.right = 280;
+	rect.top = 250;
+	rect.bottom = 280;
 	tempCheck = new uiCheckItem(dxDevice, "autoalignCheck", menuView, "Auto Align View", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures);
 	tempCheck->clickable = true;
 	g_autoAlign = tempCheck;
 	g_autoAlign->setChecked(true);
 	
-	rect.left = 10;
-	rect.right = 500;
-	rect.top = 130;
-	rect.bottom = 150;
-	tempTextInput = new uiTextInputItem(dxDevice, "testtextinput", menuView, "", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures);
-	tempTextInput->clickable = true;
+	//rect.left = 10;
+	//rect.right = 500;
+	//rect.top = 130;
+	//rect.bottom = 150;
+	//tempTextInput = new uiTextInputItem(dxDevice, "testtextinput", menuView, "", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures);
+	//tempTextInput->clickable = true;
 
-	testRadios = new uiRadioGroup();
+	//testRadios = new uiRadioGroup();
 
-	rect.left = 10;
-	rect.right = 500;
-	rect.top = 160;
-	rect.bottom = 180;
-	tempRadio = new uiRadioItem(dxDevice, "Radio0", menuView, "Radio Button 0", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
-	tempRadio->clickable = true;
-	tempRadio->setChecked(true);
-	
-	rect.left = 10;
-	rect.right = 500;
-	rect.top = 190;
-	rect.bottom = 210;
-	tempRadio = new uiRadioItem(dxDevice, "Radio1", menuView, "Radio Button 1", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
-	tempRadio->clickable = true;
-	
-	rect.left = 10;
-	rect.right = 500;
-	rect.top = 220;
-	rect.bottom = 240;
-	tempRadio = new uiRadioItem(dxDevice, "Radio2", menuView, "Radio Button 2", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
-	tempRadio->clickable = true;
+	//rect.left = 10;
+	//rect.right = 500;
+	//rect.top = 160;
+	//rect.bottom = 180;
+	//tempRadio = new uiRadioItem(dxDevice, "Radio0", menuView, "Radio Button 0", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
+	//tempRadio->clickable = true;
+	//tempRadio->setChecked(true);
+	//
+	//rect.left = 10;
+	//rect.right = 500;
+	//rect.top = 190;
+	//rect.bottom = 210;
+	//tempRadio = new uiRadioItem(dxDevice, "Radio1", menuView, "Radio Button 1", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
+	//tempRadio->clickable = true;
+	//
+	//rect.left = 10;
+	//rect.right = 500;
+	//rect.top = 220;
+	//rect.bottom = 240;
+	//tempRadio = new uiRadioItem(dxDevice, "Radio2", menuView, "Radio Button 2", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont, vertexDecPCT, "un_shade.fx", "simpleUi", rect, &mainUiem, &effects, &textures, testRadios);
+	//tempRadio->clickable = true;
 
 	// debug view
 	rect.left = 175;
