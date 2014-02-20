@@ -9348,7 +9348,7 @@ public:
 	{
 		box.draw(dxDevice);
 
-		// put in cursor is we want one
+		// put in cursor if we want one
 		if (focused)
 			label.text = label.text.insert(cursorPos, "|");
 		label.draw(dxDevice);
