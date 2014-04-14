@@ -1714,7 +1714,7 @@ const DWORD LM_full = 0x00000001;
 
 const DWORD SD_none = 0x00000000; // don't use this
 const DWORD SD_colour = 0x00000001;
-const DWORD SD_alpha = 0x00000002;
+const DWORD SD_depth = 0x00000002;
 const DWORD SD_default = 0x00000003;
 
 // this is for internal use only
@@ -2876,7 +2876,7 @@ void UNCRZ_sprite::draw(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_sprite
 	{
 		HRESULT res;
 
-		if (spriteDrawArgs & SD_alpha)
+		if (spriteDrawArgs & SD_depth)
 			dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
 		else
 			dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
@@ -9979,8 +9979,8 @@ uiTexItem* frameTimeBar;
 
 uiTextItem* evalTimeLabel;
 uiTexItem* evalTimeBar;
-uiTextItem* evalPlacingLabel;
-uiTexItem* evalPlacingBar;
+uiTextItem* evalEventsLabel;
+uiTexItem* evalEventsBar;
 uiTextItem* evalObjsLabel;
 uiTexItem* evalObjsBar;
 uiTextItem* evalSpritesLabel;
@@ -10136,6 +10136,7 @@ float hrframeTime; // seconds
 
 float hrevalTime; // seconds
 float hrevalSpritesTime; // seconds
+float hrevalEventsTime; // seconds
 float hrevalObjsTime; // seconds
 
 float hrdrawTime; // seconds
@@ -11180,6 +11181,19 @@ void handleUiAfter(uiEvent* uie)
 					debugData = true;
 				}
 			}
+			else if (wParam == VK_END)
+			{
+//				D3DXSaveTextureToFile("mehReflect.bmp", D3DXIFF_BMP, waterReflectTex, NULL);
+//				D3DXSaveTextureToFile("mehRefract.bmp", D3DXIFF_BMP, waterRefractTex, NULL);
+//				D3DXSaveTextureToFile("mehUnder.bmp", D3DXIFF_BMP, underTex, NULL);
+//				D3DXSaveTextureToFile("mehLight.bmp", D3DXIFF_BMP, lights[2]->lightTex, NULL);
+//				D3DXSaveTextureToFile("mehSun.bmp", D3DXIFF_BMP, lights[0]->lightTex, NULL);
+
+				D3DXSaveTextureToFile("mehSide.bmp", D3DXIFF_BMP, sideTex, NULL);
+//				D3DXSaveTextureToFile("mehTarget.bmp", D3DXIFF_BMP, targetTex, NULL);
+//				D3DXSaveTextureToFile("mehMainV.bmp", D3DXIFF_BMP, views[0]->targetTex, NULL);
+//				D3DXSaveTextureToFile("mehMainO.bmp", D3DXIFF_BMP, overs[0]->targetTex, NULL);
+			}
 			else if (wParam == VK_ESCAPE)
 			{
 				menuView->visible = !menuView->visible;
@@ -11444,8 +11458,10 @@ void eval()
 		}
 	}
 
+	DEBUG_HR_START(&hrsbstart);
 	registerUi(NULL, UIA_tick);
 	handleUiEvents(&mainUiem); // do events
+	DEBUG_HR_END(&hrsbstart, &hrsbend, &hrevalEventsTime);
 
 	float distRes;
 	D3DXVECTOR3 nearVec, farVec, rayDir;
@@ -11663,7 +11679,7 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = winWidth;// + 1;
 	rect.top = 0;
 	rect.bottom = winHeight;// + 1;
-	tempTex = new uiTexItem(dxDevice, "mainover", NULL, vertexDecPCT, "un_shade.fx", "over_final", "over_main", rect, &mainUiem, &effects, &textures);	
+	tempTex = new uiTexItem(dxDevice, "mainover", NULL, vertexDecPCT, "un_shade.fx", "over_final_flatalpha", "over_main", rect, &mainUiem, &effects, &textures);	
 	tempTex->clickable = true; // NEED to work out why these shaders are so whiney (simpleUi uses linear sampler, can't do linear sample on render target?)
 	uiItems.push_back(tempTex);
 	tempTex->colMod = D3DXVECTOR4(1, 1, 1, 1);
@@ -11859,20 +11875,18 @@ void initUi(LPDIRECT3DDEVICE9 dxDevice)
 	rect.right = 10; // this will change
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempTex = new uiTexItem(dxDevice, "evalPlacingBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
+	tempTex = new uiTexItem(dxDevice, "evalEventsBar", debugView, vertexDecPCT, "un_shade.fx", "simpleUi", "ui/pure.tga", rect, &mainUiem, &effects, &textures);
 	tempTex->colMod = D3DXVECTOR4(1, 0.5, 0.5, 1);
 	tempTex->clickable = false;
-	tempTex->visible = false; // disable for Heket
-	evalPlacingBar = tempTex;
+	evalEventsBar = tempTex;
 
 	rect.left = 15;
 	rect.right = 190;
 	rect.top = dg;
 	rect.bottom = dg + 20;
-	tempText = new uiTextItem(dxDevice, "evalPlacingLabel", debugView, rect, &mainUiem, "~~ eval placing time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
+	tempText = new uiTextItem(dxDevice, "evalEventsLabel", debugView, rect, &mainUiem, "~~ eval events time ~~", D3DCOLOR_ARGB(255, 0, 0, 128), uiFont);
 	tempText->clickable = false;
-	tempText->visible = false; // disable for Heket
-	evalPlacingLabel = tempText;
+	evalEventsLabel = tempText;
 
 	dg += 25;
 	// eval sprites time
@@ -12693,8 +12707,8 @@ void drawUi(LPDIRECT3DDEVICE9 dxDevice)
 
 		evalTimeLabel->text = " Eval:     " + std::string(itoa((int)(hrevalTime * 1000.0), (char*)&buff, 10)) + "ms";
 		evalTimeBar->rect.right = 10 + (int)((float)(debugView->rect.right - debugView->rect.left - 20) * hrevalTime);
-		//evalPlacingLabel->text = "Placing:  " + std::string(itoa((int)(hrevalPlacingTime / hrevalTime * 100.0), (char*)&buff, 10)) + "%";
-		//evalPlacingBar->rect.right = 10 + (int)((float)(debugView->rect.right - debugView->rect.left - 20) * hrevalPlacingTime / hrevalTime);
+		evalEventsLabel->text = "Events:  " + std::string(itoa((int)(hrevalEventsTime / hrevalTime * 100.0), (char*)&buff, 10)) + "%";
+		evalEventsBar->rect.right = 10 + (int)((float)(debugView->rect.right - debugView->rect.left - 20) * hrevalEventsTime / hrevalTime);
 		evalSpritesLabel->text = "Sprites:  " + std::string(itoa((int)(hrevalSpritesTime / hrevalTime * 100.0), (char*)&buff, 10)) + "%";
 		evalSpritesBar->rect.right = 10 + (int)((float)(debugView->rect.right - debugView->rect.left - 20) * hrevalSpritesTime / hrevalTime);
 		evalObjsLabel->text = "Objs:     " + std::string(itoa((int)(hrevalObjsTime / hrevalTime * 100.0), (char*)&buff, 10)) + "%";
@@ -12892,7 +12906,7 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 			laserSprite->draw(dxDevice, &ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), DF_default, SD_colour);
 		// alpha
 		if (laserSprites.size() > 0)
-			laserSprite->draw(dxDevice, &ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), DF_default, SD_alpha);
+			laserSprite->draw(dxDevice, &ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), DF_default, SD_depth);
 		DEBUG_DX_FLUSH();
 		DEBUG_HR_ACCEND(&hrsbstart, &hrsbend, &hrdrawSpritesTime);
 
@@ -13251,7 +13265,7 @@ void drawScene(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_view* view, DWO
 		// not asif we need these or anything
 		if (laserSprites.size() > 0)
 		{
-			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_alpha);
+			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_depth);
 		}
 	}
 	else
@@ -13282,7 +13296,7 @@ void drawScene(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_view* view, DWO
 			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_colour);
 		// alpha
 		if (laserSprites.size() > 0)
-			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_alpha);
+			laserSprite->draw(dxDevice, ddat, &sbuff, &laserSprites.front(), 0, laserSprites.size(), drawArgs, SD_depth);
 		DEBUG_DX_FLUSH();
 		DEBUG_HR_ACCEND(&hrsbstart, &hrsbend, &hrdrawSpritesTime);
 	}
@@ -13509,6 +13523,132 @@ void initLights(LPDIRECT3DDEVICE9 dxDevice)
 	ld->useLightMap = false;
 
 	lights.push_back(ld);
+
+	//
+
+
+	ld = new lightData("pointlight1");
+
+	ld->lightEnabled = true;
+	ld->lightType = LT_point;
+	ld->lightDepth = 40;
+	ld->lightDir = D3DXVECTOR4(0, 0, 1, 0.0); // not used
+	ld->lightPos = D3DXVECTOR4(20, 20, 20, 0.0);
+	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
+	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
+	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 1);
+	ld->useLightMap = false;
+
+	lights.push_back(ld);
+
+	ld = new lightData("pointlight2");
+
+	ld->lightEnabled = true;
+	ld->lightType = LT_point;
+	ld->lightDepth = 40;
+	ld->lightDir = D3DXVECTOR4(0, 0, 1, 0.0); // not used
+	ld->lightPos = D3DXVECTOR4(20, 20, -20, 0.0);
+	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
+	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
+	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 1);
+	ld->useLightMap = false;
+
+	lights.push_back(ld);
+
+	ld = new lightData("pointlight3");
+
+	ld->lightEnabled = true;
+	ld->lightType = LT_point;
+	ld->lightDepth = 40;
+	ld->lightDir = D3DXVECTOR4(0, 0, 1, 0.0); // not used
+	ld->lightPos = D3DXVECTOR4(-20, 20, 20, 0.0);
+	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
+	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
+	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 1);
+	ld->useLightMap = false;
+
+	lights.push_back(ld);
+
+	ld = new lightData("pointlight4");
+
+	ld->lightEnabled = true;
+	ld->lightType = LT_point;
+	ld->lightDepth = 40;
+	ld->lightDir = D3DXVECTOR4(0, 0, 1, 0.0); // not used
+	ld->lightPos = D3DXVECTOR4(-20, 20, -20, 0.0);
+	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
+	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
+	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 1);
+	ld->useLightMap = false;
+
+	lights.push_back(ld);
+
+
+
+	//
+
+	//
+
+	/*
+	ld = new lightData("pointlight1c");
+
+	ld->lightEnabled = true;
+	ld->lightType = LT_point;
+	ld->lightDepth = 40;
+	ld->lightDir = D3DXVECTOR4(0, 0, 1, 0.0); // not used
+	ld->lightPos = D3DXVECTOR4(10, 35, 10, 0.0);
+	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
+	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
+	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 0.0);
+	ld->useLightMap = false;
+
+	lights.push_back(ld);
+
+	ld = new lightData("pointlight2c");
+
+	ld->lightEnabled = true;
+	ld->lightType = LT_point;
+	ld->lightDepth = 40;
+	ld->lightDir = D3DXVECTOR4(0, 0, 1, 0.0); // not used
+	ld->lightPos = D3DXVECTOR4(10, 35, -10, 0.0);
+	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
+	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
+	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 0.0);
+	ld->useLightMap = false;
+
+	lights.push_back(ld);
+
+	ld = new lightData("pointlight3c");
+
+	ld->lightEnabled = true;
+	ld->lightType = LT_point;
+	ld->lightDepth = 40;
+	ld->lightDir = D3DXVECTOR4(0, 0, 1, 0.0); // not used
+	ld->lightPos = D3DXVECTOR4(-10, 35, 10, 0.0);
+	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
+	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
+	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 100000);
+	ld->useLightMap = false;
+
+	lights.push_back(ld);
+
+	ld = new lightData("pointlight4c");
+
+	ld->lightEnabled = true;
+	ld->lightType = LT_point;
+	ld->lightDepth = 40;
+	ld->lightDir = D3DXVECTOR4(0, 0, 1, 0.0); // not used
+	ld->lightPos = D3DXVECTOR4(-10, 35, -10, 0.0);
+	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
+	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
+	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 0.0);
+	ld->useLightMap = false;
+
+	lights.push_back(ld);
+	*/
+
+
+	//
 
 
 	//ld = new lightData("sun");
