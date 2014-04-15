@@ -10239,6 +10239,7 @@ int g_seled = -1;
 bool initialised = false;
 DWORD g_go = g_TM_red;
 LONGLONG g_noinput;
+float g_overheadLightMod = 0.5;
 
 //
 // end game stuff
@@ -11159,7 +11160,8 @@ void handleUiAfter(uiEvent* uie)
 			}
 			else if (wParam == VK_PAUSE || wParam == 64 + 16) // p
 			{
-				g_pause = !g_pause;
+				// DOES NOT WORK!!! CANNOT UNPAUSE!!!
+				//g_pause = !g_pause;
 				for each (uiItem* uii in uiItems)
 				{
 					uii->needsUpdate = true; // good opertunity to update everything
@@ -11555,6 +11557,34 @@ void eval()
 	views[0]->dimY = (float)winWidth / (float)winHeight;
 	views[0]->camPos = camPos;
 	views[0]->dirNormalAt(targVec);
+
+
+	// lights
+	float gb = lights[0]->lightColMod.y;
+	if (g_go == g_TM_silver)
+	{
+		if (gb < g_overheadLightMod)
+		{
+			gb += 0.05;
+			lights[0]->lightColMod = D3DXVECTOR4(g_overheadLightMod - gb, gb, gb, 1);
+		}
+		if (gb > g_overheadLightMod)
+		{
+			lights[0]->lightColMod = D3DXVECTOR4(0.0, g_overheadLightMod, g_overheadLightMod, 1);
+		}
+	}
+	else if (g_go == g_TM_red)
+	{
+		if (gb > 0.0)
+		{
+			gb -= 0.05;
+			lights[0]->lightColMod = D3DXVECTOR4(g_overheadLightMod - gb, gb, gb, 1);
+		}
+		if (gb < 0.0)
+		{
+			lights[0]->lightColMod = D3DXVECTOR4(g_overheadLightMod, 0.0, 0.0, 1);
+		}
+	}
 }
 
 void reload(LPDIRECT3DDEVICE9 dxDevice)
@@ -13508,6 +13538,8 @@ void initOvers(LPDIRECT3DDEVICE9 dxDevice)
 
 void initLights(LPDIRECT3DDEVICE9 dxDevice)
 {
+	// note that lightColMod W value is not really used by the simple shaders
+
 	lightData* ld;
 
 	ld = new lightData("pointlight");
@@ -13519,7 +13551,7 @@ void initLights(LPDIRECT3DDEVICE9 dxDevice)
 	ld->lightPos = D3DXVECTOR4(0, 50, 0, 0.0);
 	ld->lightUp = D3DXVECTOR3(1, 0, 0); // not used
 	ld->lightAmbient = D3DXVECTOR4(0, 0, 0, 0);
-	ld->lightColMod = D3DXVECTOR4(1.0, 1.0, 1.0, 1);
+	ld->lightColMod = D3DXVECTOR4(0.0, g_overheadLightMod, g_overheadLightMod, 1);
 	ld->useLightMap = false;
 
 	lights.push_back(ld);
