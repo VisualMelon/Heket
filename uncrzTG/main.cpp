@@ -11444,6 +11444,7 @@ bool takeInput()
 void evalTime()
 {
 	g_ticks++;
+	ticker += 0.01;
 }
 
 void eval()
