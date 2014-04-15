@@ -10238,6 +10238,7 @@ bool g_ticks = 0;
 int g_seled = -1;
 bool initialised = false;
 DWORD g_go = g_TM_red;
+DWORD g_winner = g_TM_none;
 LONGLONG g_noinput;
 float g_overheadLightMod = 0.5;
 
@@ -10624,6 +10625,8 @@ void g_win(DWORD winner)
 	{
 		bannerText->text = "Red Wins!";
 	}
+	g_go = g_TM_none;
+	g_winner = winner;
 }
 
 void g_startGo()
@@ -10644,8 +10647,6 @@ void g_endGo()
 {
 	if (g_go == g_TM_red)
 	{
-		g_go = g_TM_silver;
-
 		// laser time
 		DWORD winner = performLaser(9, 0, objs[getOccupier(9, 0)]->dir);
 		if (winner != g_TM_none)
@@ -10653,11 +10654,11 @@ void g_endGo()
 			g_win(winner);
 			return;
 		}
+
+		g_go = g_TM_silver;
 	}
 	else if (g_go == g_TM_silver)
 	{
-		g_go = g_TM_red;
-
 		// laser time
 		DWORD winner = performLaser(0, 7, objs[getOccupier(0, 7)]->dir);
 		if (winner != g_TM_none)
@@ -10665,6 +10666,8 @@ void g_endGo()
 			g_win(winner);
 			return;
 		}
+
+		g_go = g_TM_red;
 	}
 
 	g_startGo();
@@ -10678,6 +10681,7 @@ void g_startGame()
 		objs[i]->reset();
 	}
 	g_go = g_TM_silver;
+	g_winner = g_TM_none;
 	g_startGo();
 }
 
@@ -11263,8 +11267,6 @@ void handleUiAfter(uiEvent* uie)
 						float highNess = (7.0f - (float)objs[g_seled]->y) / 8.0f;
 						g_align(leftNess, highNess - abs(leftNess));
 					}
-					else
-						g_align();
 				}
 			}
 		}
@@ -11561,7 +11563,7 @@ void eval()
 
 	// lights
 	float gb = lights[0]->lightColMod.y;
-	if (g_go == g_TM_silver)
+	if (g_winner == g_TM_silver || g_go == g_TM_silver)
 	{
 		if (gb < g_overheadLightMod)
 		{
@@ -11573,7 +11575,7 @@ void eval()
 			lights[0]->lightColMod = D3DXVECTOR4(0.0, g_overheadLightMod, g_overheadLightMod, 1);
 		}
 	}
-	else if (g_go == g_TM_red)
+	else if (g_winner == g_TM_red || g_go == g_TM_red)
 	{
 		if (gb > 0.0)
 		{
