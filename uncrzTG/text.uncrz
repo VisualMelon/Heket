@@ -15551,7 +15551,7 @@ sec one
 
 shader_dx9 un_shade.fx
 colmod 1 1 1 1
-technique simpleTex
+technique simpleTex_test
 technique_light simpleTex_light
 technique_decal simple_decal
 technique_over over
@@ -34902,7 +34902,7 @@ sec one
 
 shader_dx9 un_shade.fx
 colmod 1 1 1 1
-technique simpleTex
+technique simpleTex_test
 technique_light simpleTex_light
 technique_decal simple_decal
 technique_over over
@@ -47390,7 +47390,7 @@ sec one
 
 shader_dx9 un_shade.fx
 colmod 1 1 1 1
-technique simpleTex
+technique simpleTex_test
 technique_light simpleTex_light
 technique_decal simple_decal
 technique_over over
@@ -51144,7 +51144,7 @@ sec one
 
 shader_dx9 un_shade.fx
 colmod 1 1 1 1
-technique simpleTex
+technique simpleTex_test
 technique_light simpleTex_light
 technique_decal simple_decal
 technique_over over
@@ -52582,7 +52582,7 @@ sec one
 
 shader_dx9 un_shade.fx
 colmod 1 1 1 1
-technique simpleTex
+technique simpleTex_test
 technique_light simpleTex_light
 technique_decal simple_decal
 technique_over over

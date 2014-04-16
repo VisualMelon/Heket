@@ -944,6 +944,7 @@ PS_Output PShade_Tex(VS_Output_Tex inp)
 
 	outp.col = outp.col * (1.0 - lightCoof);
 
+	outp.col *= alphaPreserve;
 	outp.col.w = alphaPreserve;
 
 	return outp;
@@ -969,9 +970,32 @@ PS_Output PShade_Tex_Test(VS_Output_Tex inp)
 	tcoords.x += targTexData.x;
 	tcoords.y += targTexData.y;
 
-	outp.col = tex2D(targTexSampler, tcoords);
+	// get front colour
+	outp.col = PShade_Tex(inp).col;
+	float alphaPreserve = outp.col.w;
+	//outp.col *= alphaPreserve; // done in PShade_Tex
+	alphaPreserve = 1.0 - alphaPreserve;
 
-	outp.col.x += 100;
+	// pour in the back colour
+	float off = sin(ticker) * 3.0;
+
+	//float off = 2.0;
+	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	tcoords.x += targTexData.x * 1.0 * off;
+	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	tcoords.x -= targTexData.x * 2.0 * off;
+	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	tcoords.x += targTexData.x * 1.0 * off;
+	tcoords.y += targTexData.y * 1.0 * off;
+	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	tcoords.y -= targTexData.y * 2.0 * off;
+	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+
+	//outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve;
+
+	// flat alpha
+	outp.col.w = 1;
+
 	return outp;
 }
 /// END TEST CODE
@@ -992,6 +1016,7 @@ PS_Output PShade_Tex_LitOrtho(VS_Output_Tex inp)
 
 	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
 
+	outp.col *= alphaPreserve;
 	outp.col.w = 0;//alphaPreserve;
 
 	return outp;
@@ -1011,6 +1036,7 @@ PS_Output PShade_Tex_LitPersp(VS_Output_Tex inp)
 
 	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
 
+	outp.col *= alphaPreserve;
 	outp.col.w = 0;//alphaPreserve;
 
 	return outp;
@@ -1030,6 +1056,7 @@ PS_Output PShade_Tex_LitPoint(VS_Output_Tex inp)
 
 	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
 
+	outp.col *= alphaPreserve;
 	outp.col.w = 0;//alphaPreserve;
 
 	return outp;
@@ -1855,7 +1882,7 @@ technique simpleTex
 }
 
 /// TEST CODE
-technique simpleTex_Test
+technique simpleTex_test
 {
 	pass unlit
 	{

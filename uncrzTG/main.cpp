@@ -1914,25 +1914,34 @@ public:
 	bool curDrawCull;
 
 	void setAlpha(LPDIRECT3DDEVICE9 dxDevice)
-	{
+	{ // for drawing
 		switch (alphaMode)
 		{
 		case AM_none:
 			dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
 			break;
 		case AM_nice:
-			dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+			dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+			/*dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 			dxDevice->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
 			dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-			dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+			dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);*/
 			break;
 		case AM_add:
 			dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 			dxDevice->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-			dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+			dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE); // formerly D3DBLEND_SRCALPHA
 			dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
 			break;
 		}
+	}
+
+	void setAlphaForOver(LPDIRECT3DDEVICE9 dxDevice)
+	{ // for over
+		dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+		dxDevice->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+		dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE); // stuff writing to side should be doing it's own bleninding
+		dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
 	}
 
 	void setTextures()
@@ -2256,7 +2265,7 @@ skipPlainDecalPass:
 		effect.setViewProj(&idMat);
 		effect.effect->CommitChanges();
 
-		setAlpha(dxDevice);
+		setAlphaForOver(dxDevice);
 
 		UINT numPasses, pass;
 		effect.effect->Begin(&numPasses, 0);
