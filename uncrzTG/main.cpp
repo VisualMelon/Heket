@@ -3831,7 +3831,7 @@ struct UNCRZ_FBF_anim_instr
 			if (aiFlags & AI_proc_2)
 				sec->colMod.z += (val.z - sec->colMod.z) * ratio;
 			if (aiFlags & AI_proc_3)
-				sec->colMod.w += (val.z - sec->colMod.w) * ratio;
+				sec->colMod.w += (val.w - sec->colMod.w) * ratio;
 		}
 		else if (instrType == UNCRZ_fai_offset_smth0) // dodgy
 		{
@@ -11554,7 +11554,7 @@ void eval()
 	int winHeight = crect.bottom - crect.top;
 
 	// get normaled vecs
-	camPos = D3DXVECTOR3(0.0f, 1.0f, 0.0f);
+	camPos = D3DXVECTOR3(0.0f, 3.0f, 0.0f);
 
 	D3DXMATRIX mehMatrix;
 	D3DXVECTOR3 dirVec = D3DXVECTOR3(20.0f, 0.0f, 0.0f);
@@ -11565,6 +11565,7 @@ void eval()
 
 	camPos -= dirVec;
 	D3DXVECTOR3 targVec = camPos + dirVec;
+	camPos.y -= (camPos.y - 3) / 20;
 
 	views[0]->dimY = (float)winWidth / (float)winHeight;
 	views[0]->camPos = camPos;
@@ -13530,10 +13531,12 @@ void initOvers(LPDIRECT3DDEVICE9 dxDevice)
 	UNCRZ_over* tempOver;
 
 	tempOver = new UNCRZ_over("main");
-	tempOver->init(dxDevice, vpWidth * targetTexScale, vpHeight * targetTexScale, "un_shade.fx", "over_final", &effects, D3DFMT_A8B8G8R8);
+	tempOver->init(dxDevice, vpWidth * targetTexScale, vpHeight * targetTexScale, "un_shade.fx", "over_final_fun", &effects, D3DFMT_A8B8G8R8);
 	tempOver->initStencil(zSurface);
 	tempOver->useTex = true; // write a "loadtex" func or something?
 	createTexture(dxDevice, "view_main", &tempOver->tex, &textures);
+	tempOver->useTex0 = true;
+	createTexture(dxDevice, "ui/overtex.tga", &tempOver->tex0, &textures);
 	tempOver->alphaMode = AM_none;
 	tempOver->clearView = true;
 	tempOver->clearColor = D3DCOLOR_XRGB(0, 0, 0);

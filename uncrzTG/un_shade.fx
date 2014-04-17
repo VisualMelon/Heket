@@ -114,12 +114,18 @@ sampler texSampler = sampler_state { texture = <tex>;magfilter = NONE; minfilter
 sampler texBorderSampler = sampler_state { texture = <tex>;magfilter = NONE; minfilter = NONE; mipfilter = NONE; AddressU = border; AddressV = border; BorderColor = 0x00000000;}; // border
 sampler texLinearSampler = sampler_state { texture = <tex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = mirror; AddressV = mirror;}; // linear 
 sampler texLinearBorderSampler = sampler_state { texture = <tex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = border; AddressV = border; BorderColor = 0x00000000;}; // linear 
+sampler texNonMipLinearSampler = sampler_state { texture = <tex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = NONE; AddressU = mirror; AddressV = mirror;}; // linear 
+sampler texNonMipLinearBorderSampler = sampler_state { texture = <tex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = NONE; AddressU = border; AddressV = border; BorderColor = 0x00000000;}; // linear 
 float4 texData; // (offX, offY,) mulX, mulY
 
 float4x4 vpMat;
 float4 targTexData; // offX, offY, mulX, mulY
 Texture targTex;
 sampler targTexSampler = sampler_state { texture = <targTex>;magfilter = NONE; minfilter = NONE; mipfilter = NONE; AddressU = mirror; AddressV = mirror;};
+sampler targTexLinearSampler = sampler_state { texture = <targTex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = mirror; AddressV = mirror;}; // linear 
+sampler targTexLinearBorderSampler = sampler_state { texture = <targTex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = border; AddressV = border; BorderColor = 0x00000000;}; // linear 
+sampler targTexNonMipLinearSampler = sampler_state { texture = <targTex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = NONE; AddressU = mirror; AddressV = mirror;}; // linear 
+sampler targTexNonMipLinearBorderSampler = sampler_state { texture = <targTex>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = NONE; AddressU = border; AddressV = border; BorderColor = 0x00000000;}; // linear 
 
 float lightCoof;
 float lightConeness;
@@ -140,12 +146,16 @@ sampler lightPatternTexLinearSampler = sampler_state { texture = <lightPatternTe
 
 Texture tex0;
 sampler tex0Sampler = sampler_state { texture = <tex0>;magfilter = NONE; minfilter = NONE; mipfilter = NONE; AddressU = mirror; AddressV = mirror;};
+sampler tex0LinearSampler = sampler_state { texture = <tex0>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = mirror; AddressV = mirror;};
 Texture tex1;
 sampler tex1Sampler = sampler_state { texture = <tex1>;magfilter = NONE; minfilter = NONE; mipfilter = NONE; AddressU = mirror; AddressV = mirror;};
+sampler tex1LinearSampler = sampler_state { texture = <tex1>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = mirror; AddressV = mirror;};
 Texture tex2;
 sampler tex2Sampler = sampler_state { texture = <tex2>;magfilter = NONE; minfilter = NONE; mipfilter = NONE; AddressU = mirror; AddressV = mirror;};
+sampler tex2LinearSampler = sampler_state { texture = <tex2>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = mirror; AddressV = mirror;};
 Texture tex3;
 sampler tex3Sampler = sampler_state { texture = <tex3>;magfilter = NONE; minfilter = NONE; mipfilter = NONE; AddressU = mirror; AddressV = mirror;};
+sampler tex3LinearSampler = sampler_state { texture = <tex3>;magfilter = LINEAR; minfilter = LINEAR; mipfilter = LINEAR; AddressU = mirror; AddressV = mirror;};
 
 float4x4 transarr[30]; // need to be same as number of segs
 float4 spriteLoc[100]; // sprite buffer size must be no more than (this len / size of sprite data)
@@ -974,24 +984,26 @@ PS_Output PShade_Tex_Test(VS_Output_Tex inp)
 	outp.col = PShade_Tex(inp).col;
 	float alphaPreserve = outp.col.w;
 	//outp.col *= alphaPreserve; // done in PShade_Tex
-	alphaPreserve = 1.0 - alphaPreserve;
 
 	// pour in the back colour
 	//float off = sin(ticker) * 3.0;
 
+	float prop = 1.0 - alphaPreserve;
+	float qprop = prop * alphaPreserve * 0.2;
+
 	float off = 3.0;
-	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * (prop - qprop * 4.0);
 	tcoords.x += targTexData.x * 1.0 * off;
-	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * qprop;
 	tcoords.x -= targTexData.x * 2.0 * off;
-	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * qprop;
 	tcoords.x += targTexData.x * 1.0 * off;
 	tcoords.y += targTexData.y * 1.0 * off;
-	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * qprop;
 	tcoords.y -= targTexData.y * 2.0 * off;
-	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * qprop;
 
-	//outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve;
+	//outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * alphaPreserve;
 
 	// flat alpha
 	outp.col.w = 1;
@@ -1624,6 +1636,50 @@ PS_Output PShade_Over_Final(VS_Output_Over inp)
 	return outp;
 }
 
+PS_Output PShade_Over_Final_Fun(VS_Output_Over inp)
+{
+	PS_Output outp = (PS_Output)0;
+
+	float4 coldat = tex2D(tex0LinearSampler, inp.txc);
+
+	float prop = coldat.x * coldat.w;
+	float qprop = prop * 0.2;
+
+	outp.col = float4(qprop, qprop, qprop, 1.0);
+
+	float2 tcoords = inp.txc;
+
+	float off = 3.0;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * (1.0 - prop + qprop);
+
+	tcoords.x += texData.x * 1.0 * off;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * qprop;
+	tcoords.x -= texData.x * 2.0 * off;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * qprop;
+	tcoords.x += texData.x * 1.0 * off;
+	tcoords.y += texData.y * 1.0 * off;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * qprop;
+	tcoords.y -= texData.y * 2.0 * off;
+	outp.col = outp.col + tex2D(targTexNonMipLinearSampler, tcoords) * qprop;
+
+	outp.col.w = 1;
+	return outp;
+}
+
+PS_Output PShade_Over_Final_Wobble(VS_Output_Over inp)
+{
+	PS_Output outp = (PS_Output)0;
+
+	float4 coldat = tex2D(tex0LinearSampler, inp.txc);
+
+	inp.txc.x += sin(ticker * 10.0 + 0.4 * inp.txc.y / texData.w) * texData.z * 10.0 * coldat.x * coldat.w;
+
+	outp.col = tex2D(texNonMipLinearSampler, inp.txc);
+
+	outp.col.w = 1;
+	return outp;
+}
+
 PS_Output PShade_Over_Final_FlatAlpha(VS_Output_Over inp)
 {
 	PS_Output outp = (PS_Output)0;
@@ -1638,7 +1694,16 @@ PS_Output PShade_Over_Linear(VS_Output_Over inp)
 {
 	PS_Output outp = (PS_Output)0;
 
-	outp.col = tex2D(texLinearSampler, inp.txc);
+	outp.col = tex2D(texNonMipLinearSampler, inp.txc);
+
+	return outp;
+}
+
+PS_Output PShade_Over_Linear_FlatAlpha(VS_Output_Over inp)
+{
+	PS_Output outp = (PS_Output)0;
+
+	outp.col = tex2D(texNonMipLinearSampler, inp.txc);
 
 	return outp;
 }
@@ -2175,6 +2240,15 @@ technique over_final
 	}
 }
 
+technique over_final_fun
+{
+	pass over
+	{
+		VertexShader = compile vs_2_0 VShade_Over_Final();
+		PixelShader = compile ps_2_0 PShade_Over_Final_Fun();
+	}
+}
+
 technique over_final_flatalpha
 {
 	pass over
@@ -2190,6 +2264,15 @@ technique over_linear
 	{
 		VertexShader = compile vs_2_0 VShade_Over_Final();
 		PixelShader = compile ps_2_0 PShade_Over_Linear();
+	}
+}
+
+technique over_linear_flatalpha
+{
+	pass over
+	{
+		VertexShader = compile vs_2_0 VShade_Over_Final();
+		PixelShader = compile ps_2_0 PShade_Over_Linear_FlatAlpha();
 	}
 }
 
