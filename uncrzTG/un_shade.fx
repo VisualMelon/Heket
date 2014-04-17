@@ -977,9 +977,9 @@ PS_Output PShade_Tex_Test(VS_Output_Tex inp)
 	alphaPreserve = 1.0 - alphaPreserve;
 
 	// pour in the back colour
-	float off = sin(ticker) * 3.0;
+	//float off = sin(ticker) * 3.0;
 
-	//float off = 2.0;
+	float off = 3.0;
 	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
 	tcoords.x += targTexData.x * 1.0 * off;
 	outp.col = outp.col + tex2D(targTexSampler, tcoords) * alphaPreserve * 0.2;
@@ -1106,6 +1106,7 @@ PS_Output PShade_Decal(VS_Output_Decal inp)
 
 	outp.col = outp.col * (1.0 - lightCoof);
 
+	outp.col *= alphaPreserve;
 	outp.col.w = alphaPreserve;
 
 	return outp;
@@ -1137,7 +1138,8 @@ PS_Output PShade_Decal_LitOrtho(VS_Output_Decal inp)
 
 	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
 
-	outp.col.w = alphaPreserve;
+	outp.col *= alphaPreserve;
+	outp.col.w = 0;//alphaPreserve;
 
 	return outp;
 }
@@ -1167,7 +1169,8 @@ PS_Output PShade_Decal_LitPersp(VS_Output_Decal inp)
 
 	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
 
-	outp.col.w = alphaPreserve;
+	outp.col *= alphaPreserve;
+	outp.col.w = 0;//alphaPreserve;
 
 	return outp;
 }
@@ -1197,7 +1200,8 @@ PS_Output PShade_Decal_LitPoint(VS_Output_Decal inp)
 
 	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
 
-	outp.col.w = alphaPreserve;
+	outp.col *= alphaPreserve;
+	outp.col.w = 0;//alphaPreserve;
 
 	return outp;
 }

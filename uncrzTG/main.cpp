@@ -281,7 +281,7 @@ public:
 	D3DXVECTOR4 eyeDir;
 	std::vector<lightData*> lightDatas;
 	std::vector<dynamicDecalData*> dynamicDecalDatas;
-	bool performPlainPass;
+	bool performPlainPass; // does this make a shred of sense? (something has to sort out the alpha channel)
 	float lightCoof;
 	float lightType;
 	float lightDepth;
@@ -2089,7 +2089,7 @@ skipPlainPass:
 
 		dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 		dxDevice->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-		dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+		dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
 		dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
 
 		effect.effect->Begin(&numPasses, 0);
@@ -2131,7 +2131,7 @@ skipPlainDecalPass:
 			// enable blend
 			dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 			dxDevice->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-			dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+			dxDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
 			dxDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
 
 			// light pass
