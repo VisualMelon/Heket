@@ -141,7 +141,7 @@ flow 1
 
 motion c
 a colmod one 0 0 0 0
-a colmod mirror 0 0 0 1
+a colmod mirror 0 0 0 0
 duration 100
 end motion
 
@@ -298,7 +298,7 @@ flow 1
 
 motion c
 a colmod one 0 0 0 0
-a colmod mirror 0 0 0 1
+a colmod mirror 0 0 0 0
 duration 100
 end motion
 
