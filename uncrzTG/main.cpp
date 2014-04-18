@@ -9479,6 +9479,7 @@ public:
 		createTexture(dxDevice, "ui/button.tga", &nrmTex, textureList);
 		createTexture(dxDevice, "ui/buttonPress.tga", &pressTex, textureList);
 
+		pressed = true; // so that setPressed doesn't cancel itself
 		setPressed(false);
 	}
 
