@@ -10263,6 +10263,7 @@ bool g_pause = false;
 bool g_ticks = 0;
 int g_seled = -1;
 bool initialised = false;
+bool g_goended = true;
 DWORD g_go = g_TM_red;
 DWORD g_winner = g_TM_none;
 LONGLONG g_noinput;
@@ -10657,12 +10658,16 @@ void g_win(DWORD winner)
 
 void g_startGo()
 {
-	if (g_go == g_TM_silver)
+	g_goended = false;
+
+	if (g_go == g_TM_red)
 	{
+		g_go = g_TM_silver;
 		bannerText->text = "Silver's Turn";
 	}
-	else if (g_go == g_TM_red)
+	else if (g_go == g_TM_silver)
 	{
+		g_go = g_TM_red;
 		bannerText->text = "Red's Turn";
 	}
 
@@ -10681,7 +10686,7 @@ void g_endGo()
 			return;
 		}
 
-		g_go = g_TM_silver;
+		g_goended = true;
 	}
 	else if (g_go == g_TM_silver)
 	{
@@ -10693,10 +10698,9 @@ void g_endGo()
 			return;
 		}
 
-		g_go = g_TM_red;
+		g_goended = true;
 	}
 
-	g_startGo();
 	return;
 }
 
@@ -10706,7 +10710,7 @@ void g_startGame()
 	{
 		objs[i]->reset();
 	}
-	g_go = g_TM_silver;
+	g_go = g_TM_red; // swapped in g_startGo
 	g_winner = g_TM_none;
 	g_startGo();
 }
@@ -11283,13 +11287,13 @@ void handleUiAfter(uiEvent* uie)
 					
 					if (g_go == g_TM_red)
 					{
-						float leftNess = ((float)objs[g_seled]->x - 4.5f) / 9.0f;
+						float leftNess = ((float)objs[g_seled]->x - 4.5f) / 18.0f;
 						float highNess = ((float)objs[g_seled]->y - 0.0f) / 8.0f;
 						g_align(leftNess, highNess - abs(leftNess));
 					}
 					else if (g_go == g_TM_silver)
 					{
-						float leftNess = (4.5f - (float)objs[g_seled]->x) / 9.0f;
+						float leftNess = (4.5f - (float)objs[g_seled]->x) / 18.0f;
 						float highNess = (7.0f - (float)objs[g_seled]->y) / 8.0f;
 						g_align(leftNess, highNess - abs(leftNess));
 					}
@@ -11615,6 +11619,9 @@ void eval()
 			lights[0]->lightColMod = D3DXVECTOR4(g_overheadLightMod, 0.0, 0.0, 1);
 		}
 	}
+
+	if (g_goended)
+		g_startGo();
 }
 
 void reload(LPDIRECT3DDEVICE9 dxDevice)
