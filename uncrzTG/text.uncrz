@@ -45169,7 +45169,7 @@ technique_light simpleTex_light
 technique_decal simple_decal
 technique_over over
 texture white.tga
-lighting none
+lighting dull
 alpha nice
 
 f 36 5400 37
@@ -52642,7 +52642,7 @@ technique_light simpleTex_light
 technique_decal simple_decal
 technique_over over
 texture white.tga
-lighting none
+lighting full
 alpha nice
 
 f 43 51 50

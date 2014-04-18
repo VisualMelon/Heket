@@ -1076,6 +1076,25 @@ PS_Output PShade_Tex_LitPoint(VS_Output_Tex inp)
 
 
 
+PS_Output PShade_Sprite(VS_Output_Tex inp)
+{ // no light coof
+	//float num = (inp.altPos.z / inp.altPos.w);
+	PS_Output outp = (PS_Output)0;
+	//outp.dep = num;
+	//num = 1.0 - num;
+	outp.col = inp.col * tex2D(texSampler, inp.txc);
+
+	outp.col = outp.col * colMod;
+	float alphaPreserve = outp.col.w;
+
+	outp.col *= alphaPreserve;
+	outp.col.w = alphaPreserve;
+
+	return outp;
+}
+
+
+
 
 PS_Output PShade_Cloud(VS_Output_Tex inp)
 {
@@ -2032,7 +2051,7 @@ technique sprite_flat
 	pass unlit
 	{
 		VertexShader = compile vs_2_0 VShade_Sprite_Flat();
-		PixelShader = compile ps_2_0 PShade_Tex();
+		PixelShader = compile ps_2_0 PShade_Sprite();
 	}
 }
 
@@ -2041,7 +2060,7 @@ technique sprite_fire
 	pass unlit
 	{
 		VertexShader = compile vs_2_0 VShade_Sprite_Fire();
-		PixelShader = compile ps_2_0 PShade_Tex();
+		PixelShader = compile ps_2_0 PShade_Sprite();
 	}
 }
 
@@ -2050,7 +2069,7 @@ technique sprite_smoke
 	pass unlit
 	{
 		VertexShader = compile vs_2_0 VShade_Sprite_Smoke();
-		PixelShader = compile ps_2_0 PShade_Tex();
+		PixelShader = compile ps_2_0 PShade_Sprite();
 	}
 }
 

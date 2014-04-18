@@ -12831,7 +12831,7 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 	dxDevice->SetRenderState(D3DRS_ZENABLE, true);
 	dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, true);
 
-	float lightCoof = 0.7f;
+	float lightCoof = 1.0f; // this may be purged
 
 	DEBUG_HR_START(&hrsbstart);
 	// anims
