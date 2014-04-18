@@ -282,6 +282,7 @@ public:
 	std::vector<lightData*> lightDatas;
 	std::vector<dynamicDecalData*> dynamicDecalDatas;
 	bool performPlainPass; // does this make a shred of sense? (something has to sort out the alpha channel)
+	float farDepth;
 	float lightCoof;
 	float lightType;
 	float lightDepth;
@@ -1324,6 +1325,8 @@ public:
 	D3DXHANDLE targetVPMat;
 	D3DXHANDLE targetTexture;
 	D3DXHANDLE targetTextureData;
+	D3DXHANDLE farDepth;
+	D3DXHANDLE farDepthInv;
 	D3DXHANDLE lightType;
 	D3DXHANDLE lightCoof;
 	D3DXHANDLE lightDepth;
@@ -1377,6 +1380,12 @@ public:
 
 		setLightViewProj(&ddd->lightViewProj);
 		setLightPatternTexture(ddd->lightPatternTex);
+	}
+
+	void setFarDepth(float dep)
+	{
+		effect->SetFloat(farDepth, dep);
+		effect->SetFloat(farDepthInv, 1.0 / dep);
 	}
 
 	void setcolMod(float* ptr)
@@ -1566,6 +1575,8 @@ public:
 		targetVPMat = effect->GetParameterByName(NULL, "vpMat");
 		targetTexture = effect->GetParameterByName(NULL, "targTex");
 		targetTextureData = effect->GetParameterByName(NULL, "targTexData");
+		farDepth = effect->GetParameterByName(NULL, "farDepth");
+		farDepthInv = effect->GetParameterByName(NULL, "farDepthInv");
 		lightType = effect->GetParameterByName(NULL, "lightType");
 		lightCoof = effect->GetParameterByName(NULL, "lightCoof");
 		lightDepth = effect->GetParameterByName(NULL, "lightDepth");
@@ -1975,6 +1986,7 @@ public:
 		{
 			effect.setTechnique(tech);
 			effect.setLightCoof(ddat->lightCoof);
+			effect.setFarDepth(ddat->farDepth);
 		}
 
 		setTextures();
@@ -2324,6 +2336,7 @@ skipPlainDecalPass:
 		{
 			effect.setTechnique(tech);
 			effect.setLightCoof(ddat->lightCoof);
+			effect.setFarDepth(ddat->farDepth);
 		}
 
 		effect.setTransArr(transArr);
@@ -2923,6 +2936,7 @@ void UNCRZ_sprite::draw(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_sprite
 		{
 			effect.setTechnique(tech);
 			effect.setLightCoof(ddat->lightCoof);
+			effect.setFarDepth(ddat->farDepth);
 		}
 
 		D3DXVECTOR4 dim(dimX, dimY, dimZ, 0);
@@ -5070,6 +5084,7 @@ struct UNCRZ_terrain
 		{
 			effect.setTechnique(tech);
 			effect.setLightCoof(ddat->lightCoof);
+			effect.setFarDepth(ddat->farDepth);
 		}
 
 		setTextures();
@@ -5608,6 +5623,7 @@ struct UNCRZ_frion
 		{
 			effect.setTechnique(tech);
 			effect.setLightCoof(ddat->lightCoof);
+			effect.setFarDepth(ddat->farDepth);
 		}
 
 		setTextures();
@@ -12895,6 +12911,7 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 	dxDevice->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
 
 	// drawOver
+	DEBUG_HR_START(&hrsbstart);
 	for (int i = overs.size() - 1; i >= 0; i--)
 	{
 		if (overs[i]->overEnabled)
@@ -12903,6 +12920,8 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 			drawOver(dxDevice, &overDdat, overs[i]); // timed
 		}
 	}
+	DEBUG_DX_FLUSH();
+	DEBUG_HR_END(&hrsbstart, &hrsbend, &hrdrawOverTime);
 
 	if (!disableOpenTarget)
 	{
@@ -13118,6 +13137,8 @@ drawData createDrawDataView(float lightCoof, D3DVIEWPORT9* vp, UNCRZ_view* view)
 
 	ddat.zSideSurface = zSideSurface;
 	ddat.zTargetSurface = zSurface;
+
+	ddat.farDepth = view->projectionFar;
 
 	// debugging/hr
 	ddat.hrsec = hrsec;
@@ -13516,7 +13537,7 @@ void initViews(LPDIRECT3DDEVICE9 dxDevice)
 	tempView->clearView = true;
 	tempView->clearColor = D3DCOLOR_XRGB(0, 0, 0);
 	tempView->projectionNear = 1;
-	tempView->projectionFar = 1000; // broken ATM, must be 1000
+	tempView->projectionFar = 1500;
 	views.push_back(tempView);
 
 	// this bit is IMPERATIVE (targettexture linking)
