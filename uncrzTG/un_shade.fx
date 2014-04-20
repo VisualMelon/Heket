@@ -1087,7 +1087,7 @@ PS_Output PShade_Sprite(VS_Output_Tex inp)
 	outp.col = outp.col * colMod;
 	float alphaPreserve = outp.col.w;
 
-	outp.col *= alphaPreserve;
+	outp.col *= alphaPreserve; // .... this is inconsistent with everything
 	outp.col.w = alphaPreserve;
 
 	return outp;
