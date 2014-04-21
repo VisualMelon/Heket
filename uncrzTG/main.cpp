@@ -12367,7 +12367,7 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 	{
 		if (views[i]->viewEnabled)
 		{
-			moveCameraView(dxDevice, views[i]);
+			moveCameraView(dxDevice, views[i]); // sets eyePos/eyeDir - needed for ddat
 			drawData viewDdat = createDrawDataView(lightCoof, &vp, views[i]);
 			drawScene(dxDevice, &viewDdat, views[i], DF_default, SF_default); // timed
 		}
@@ -13118,7 +13118,6 @@ void initLights(LPDIRECT3DDEVICE9 dxDevice)
 	lights.push_back(ld);
 
 
-
 	//
 
 	//
@@ -13331,6 +13330,14 @@ void moveCameraView_ortho(UNCRZ_view* view)
 	D3DXMatrixMultiply(&viewProj, &viewMatrix, &projMatrix);
 
 	texAlignViewProj(&viewProj);
+
+	eyePos = D3DXVECTOR4(eyeVec, 0);
+	eyeDir = D3DXVECTOR4(targVec, 0) - eyePos;
+	
+	float edMod = sqrtf(eyeDir.x * eyeDir.x + eyeDir.y * eyeDir.y + eyeDir.z * eyeDir.z);
+	eyeDir.x /= edMod;
+	eyeDir.y /= edMod;
+	eyeDir.z /= edMod;
 }
 
 void moveCameraView_persp(UNCRZ_view* view)
@@ -13343,6 +13350,14 @@ void moveCameraView_persp(UNCRZ_view* view)
  
 	D3DXMatrixPerspectiveFovLH(&projMatrix, view->dimX, view->dimY, view->projectionNear, view->projectionFar);
 	D3DXMatrixMultiply(&viewProj, &viewMatrix, &projMatrix);
+
+	eyePos = D3DXVECTOR4(eyeVec, 0);
+	eyeDir = D3DXVECTOR4(targVec, 0) - eyePos;
+	
+	float edMod = sqrtf(eyeDir.x * eyeDir.x + eyeDir.y * eyeDir.y + eyeDir.z * eyeDir.z);
+	eyeDir.x /= edMod;
+	eyeDir.y /= edMod;
+	eyeDir.z /= edMod;
 }
 
 void moveCameraView(LPDIRECT3DDEVICE9 dxDevice, UNCRZ_view* view)
