@@ -1,3 +1,5 @@
+// lush lush lush
+
 struct VS_Input
 {
 	float4 pos : POSITION0;
@@ -173,6 +175,17 @@ float clampPositive(float num)
 	return num;
 }
 
+float4 normaliseXYZ(float4 vec)
+{
+	float mod = rsqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z);
+	return vec * mod;
+}
+
+float4 reflect(float4 dir, float4 nrm)
+{
+	return dir + (nrm * -dot(nrm, dir)) * 2.0;
+}
+
 float4 lightTransOrtho(float4 pos)
 {
 	float4 res = mul(pos, lightViewProj);
@@ -266,24 +279,41 @@ float4 lightUnTrans(float4 pos)
 
 float lightLitnessOrtho(float4 pos, float4 nrm)
 {
-	return -dot(nrm, lightDir);
+	float res = -dot(nrm, lightDir);
+	return res;
 }
 
 float lightLitnessPersp(float4 pos, float4 nrm)
 {
 	float4 plDir = pos - lightPos;
-	float pldRMod = rsqrt(plDir.x * plDir.x + plDir.y * plDir.y + plDir.z * plDir.z);
-	plDir *= pldRMod;
-	return -dot(nrm, plDir);
+	plDir = normaliseXYZ(plDir);
+
+	float res = -dot(nrm, plDir);
+	return res;
 }
 
 float lightLitnessPoint(float4 pos, float4 nrm)
 {
 	float4 plDir = pos - lightPos;
-	float pldRMod = rsqrt(plDir.x * plDir.x + plDir.y * plDir.y + plDir.z * plDir.z);
-	plDir *= pldRMod;
-	return -dot(nrm, plDir);
+	plDir = normaliseXYZ(plDir);
+
+	float res = -dot(nrm, plDir);
+	return res;
 }
+
+// reflectiveness (not quite specular)
+/*float lightLitnessPoint(float4 pos, float4 nrm)
+{
+	float4 plDir = pos - lightPos;
+	plDir = normaliseXYZ(plDir);
+	float4 eDir = pos - eyePos; // eyeDir just doesn't cut it
+	eDir = normaliseXYZ(eDir);
+
+	plDir.w = 0; // need a zero w for the dot
+	float res = -dot(nrm, plDir); // dullness
+	res += -dot(plDir, reflect(eDir, nrm)); // reflectivness
+	return res;
+}*/
 
 float lightLitness(float4 pos, float4 nrm)
 {
@@ -365,7 +395,7 @@ float4 calcLightModPoint(float4 lmc)
 	return lightMod;
 }
 
-float4 calcLightMod(float4 lmc)
+float4 calcLightMod_Switch(float4 lmc)
 {
 	if (lightType == 0)
 		return calcLightModOrtho(lmc);
@@ -524,117 +554,42 @@ VS_Output_Tex VShade_Tex_Test(VS_Input_Tex inp)
 /// END TEST CODE
 
 // VShade_Tex_Lit
-VS_Output_Tex VShade_Tex_LitOrtho(VS_Input_Tex inp)
-{
-	VS_Output_Tex outp = (VS_Output_Tex)0;
-	if (inp.tti >= 0)
-	{
-		inp.pos = mul(inp.pos, transarr[inp.tti]);
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]);
-	}
-	outp.pos = mul(inp.pos, viewProj);
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessOrtho(inp.pos, inp.nrm);
-	outp.lmc = lightTransOrtho(inp.pos);
-
-	return outp;
+#define STD_MCR_VShade_Tex_Lit(lightName) \
+VS_Output_Tex VShade_Tex_Lit##lightName##(VS_Input_Tex inp) \
+{ \
+	VS_Output_Tex outp = VShade_Tex(inp); \
+ \
+	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
+	outp.lmc = lightTrans##lightName##(inp.pos); \
+ \
+	return outp; \
 }
 
-VS_Output_Tex VShade_Tex_LitPersp(VS_Input_Tex inp)
-{
-	VS_Output_Tex outp = (VS_Output_Tex)0;
-	if (inp.tti >= 0)
-	{
-		inp.pos = mul(inp.pos, transarr[inp.tti]);
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]);
-	}
-	outp.pos = mul(inp.pos, viewProj);
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessPersp(inp.pos, inp.nrm);
-	outp.lmc = lightTransPersp(inp.pos);
-
-	return outp;
-}
-
-VS_Output_Tex VShade_Tex_LitPoint(VS_Input_Tex inp)
-{
-	VS_Output_Tex outp = (VS_Output_Tex)0;
-	if (inp.tti >= 0)
-	{
-		inp.pos = mul(inp.pos, transarr[inp.tti]);
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]);
-	}
-	outp.pos = mul(inp.pos, viewProj);
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessPoint(inp.pos, inp.nrm);
-	outp.lmc = lightTransPoint(inp.pos);
-
-	return outp;
-}
-
+STD_MCR_VShade_Tex_Lit(Ortho)
+STD_MCR_VShade_Tex_Lit(Persp)
+STD_MCR_VShade_Tex_Lit(Point)
 
 
 // VShade_Tex_Light
-VS_Output_Light VShade_Tex_LightOrtho(VS_Input_Tex inp)
-{
-	VS_Output_Light outp = (VS_Output_Light)0;
-	if (inp.tti >= 0)
-	{
-		outp.pos = lightTransOrthoVP(mul(inp.pos, transarr[inp.tti]));
-	}
-	else
-	{
-		outp.pos = lightTransOrthoVP(inp.pos);
-	}
-	outp.altPos = outp.pos;
-	return outp;
+#define STD_MCR_VShade_Tex_Light(lightName) \
+VS_Output_Light VShade_Tex_Light##lightName##(VS_Input_Tex inp) \
+{ \
+	VS_Output_Light outp = (VS_Output_Light)0; \
+	if (inp.tti >= 0) \
+	{ \
+		outp.pos = lightTrans##lightName##VP(mul(inp.pos, transarr[inp.tti])); \
+	} \
+	else \
+	{ \
+		outp.pos = lightTrans##lightName##VP(inp.pos); \
+	} \
+	outp.altPos = outp.pos; \
+	return outp; \
 }
 
-VS_Output_Light VShade_Tex_LightPersp(VS_Input_Tex inp)
-{
-	VS_Output_Light outp = (VS_Output_Light)0;
-	if (inp.tti >= 0)
-	{
-		outp.pos = lightTransPerspVP(mul(inp.pos, transarr[inp.tti]));
-	}
-	else
-	{
-		outp.pos = lightTransPerspVP(inp.pos);
-	}
-	outp.altPos = outp.pos;
-	return outp;
-}
-
-VS_Output_Light VShade_Tex_LightPoint(VS_Input_Tex inp)
-{
-	VS_Output_Light outp = (VS_Output_Light)0;
-	if (inp.tti >= 0)
-	{
-		outp.pos = lightTransPointVP(mul(inp.pos, transarr[inp.tti]));
-	}
-	else
-	{
-		outp.pos = lightTransPointVP(inp.pos);
-	}
-	outp.altPos = outp.pos;
-	return outp;
-}
-
+STD_MCR_VShade_Tex_Light(Ortho)
+STD_MCR_VShade_Tex_Light(Persp)
+STD_MCR_VShade_Tex_Light(Point)
 
 
 
@@ -681,72 +636,21 @@ VS_Output_Tex VShade_Sprite(VS_Input_Tex inp)
 }
 
 // VShade_Sprite_Lit
-VS_Output_Tex VShade_Sprite_LitOrtho(VS_Input_Tex inp)
-{
-	VS_Output_Tex outp = (VS_Output_Tex)0;
-	float4 centre = (float4)0;
-	if (inp.tti >= 0)
-	{
-		centre = spriteLoc[inp.tti];
-	}
-	centre = mul(centre, viewProj);
-	outp.pos = centre + inp.pos * spriteDim;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light (not implemented, this is only here because I can't be bothered to remove it, I'd much rather type this, I make sense)
-	outp.lit = lightLitnessOrtho(inp.pos, inp.nrm);
-	outp.lmc = lightTransOrtho(inp.pos);
-
-	return outp;
+#define STD_MCR_VShade_Sprite_Lit(lightName) \
+VS_Output_Tex VShade_Sprite_Lit##lightName##(VS_Input_Tex inp) \
+{ \
+	VS_Output_Tex outp = VShade_Sprite(inp); \
+ \
+	/*(not implemented, this is only here because I can't be bothered to remove it, I'd much rather type this, I make sense)*/ \
+	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
+	outp.lmc = lightTrans##lightName##(inp.pos); \
+ \
+	return outp; \
 }
 
-VS_Output_Tex VShade_Sprite_LitPersp(VS_Input_Tex inp)
-{
-	VS_Output_Tex outp = (VS_Output_Tex)0;
-	float4 centre = (float4)0;
-	if (inp.tti >= 0)
-	{
-		centre = spriteLoc[inp.tti];
-	}
-	centre = mul(centre, viewProj);
-	outp.pos = centre + inp.pos * spriteDim;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessPersp(inp.pos, inp.nrm);
-	outp.lmc = lightTransPersp(inp.pos);
-
-	return outp;
-}
-
-VS_Output_Tex VShade_Sprite_LitPoint(VS_Input_Tex inp)
-{
-	VS_Output_Tex outp = (VS_Output_Tex)0;
-	float4 centre = (float4)0;
-	if (inp.tti >= 0)
-	{
-		centre = spriteLoc[inp.tti];
-	}
-	centre = mul(centre, viewProj);
-	outp.pos = centre + inp.pos * spriteDim;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessPoint(inp.pos, inp.nrm);
-	outp.lmc = lightTransPoint(inp.pos);
-
-	return outp;
-}
-
+STD_MCR_VShade_Sprite_Lit(Ortho)
+STD_MCR_VShade_Sprite_Lit(Persp)
+STD_MCR_VShade_Sprite_Lit(Point)
 
 
 VS_Output_Tex VShade_Sprite_Flat(VS_Input_Tex inp)
@@ -871,82 +775,45 @@ VS_Output_Decal VShade_Decal(VS_Input_Decal inp)
 }
 
 // VShade_Decal_Lit
-VS_Output_Decal VShade_Decal_LitOrtho(VS_Input_Decal inp)
-{
-	VS_Output_Decal outp = (VS_Output_Decal)0;
-	if (inp.tti >= 0)
-	{
-		inp.pos = mul(inp.pos, transarr[inp.tti]);
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]);
-	}
-	outp.pos = mul(inp.pos, viewProj);
-	//outp.pos.z = outp.pos.z - 0.001;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessOrtho(inp.pos, inp.nrm);
-	outp.lmc = lightTransOrtho(inp.pos);
-
-	return outp;
+#define STD_MCR_VShade_Decal_Lit(lightName) \
+VS_Output_Decal VShade_Decal_Lit##lightName##(VS_Input_Decal inp) \
+{ \
+	VS_Output_Decal outp = VShade_Decal(inp); \
+ \
+	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
+	outp.lmc = lightTrans##lightName##(inp.pos); \
+ \
+	return outp; \
 }
 
-VS_Output_Decal VShade_Decal_LitPersp(VS_Input_Decal inp)
-{
-	VS_Output_Decal outp = (VS_Output_Decal)0;
-	if (inp.tti >= 0)
-	{
-		inp.pos = mul(inp.pos, transarr[inp.tti]);
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]);
-	}
-	outp.pos = mul(inp.pos, viewProj);
-	//outp.pos.z = outp.pos.z - 0.001;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessPersp(inp.pos, inp.nrm);
-	outp.lmc = lightTransPersp(inp.pos);
-
-	return outp;
-}
-
-VS_Output_Decal VShade_Decal_LitPoint(VS_Input_Decal inp)
-{
-	VS_Output_Decal outp = (VS_Output_Decal)0;
-	if (inp.tti >= 0)
-	{
-		inp.pos = mul(inp.pos, transarr[inp.tti]);
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]);
-	}
-	outp.pos = mul(inp.pos, viewProj);
-	//outp.pos.z = outp.pos.z - 0.001;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessPoint(inp.pos, inp.nrm);
-	outp.lmc = lightTransPoint(inp.pos);
-
-	return outp;
-}
+STD_MCR_VShade_Decal_Lit(Ortho)
+STD_MCR_VShade_Decal_Lit(Persp)
+STD_MCR_VShade_Decal_Lit(Point)
 
 
-
-
-
-PS_Output PShade_Tex(VS_Output_Tex inp)
+// legacy
+/*PS_Output PShade_Tex(VS_Output_Tex inp)
 {
 	//float num = (inp.altPos.z / inp.altPos.w);
 	PS_Output outp = (PS_Output)0;
 	//outp.dep = num;
 	//num = 1.0 - num;
+	outp.col = inp.col * tex2D(texSampler, inp.txc);
+
+	outp.col = outp.col * colMod;
+	float alphaPreserve = outp.col.w;
+
+	outp.col = outp.col * (1.0 - lightCoof);
+
+	outp.col *= alphaPreserve;
+	outp.col.w = alphaPreserve;
+
+	return outp;
+}*/
+
+PS_Output PShade_Tex(VS_Output_Tex inp)
+{
+	PS_Output outp = (PS_Output)0;
 	outp.col = inp.col * tex2D(texSampler, inp.txc);
 
 	outp.col = outp.col * colMod;
@@ -1013,67 +880,27 @@ PS_Output PShade_Tex_Test(VS_Output_Tex inp)
 /// END TEST CODE
 
 // PShade_Tex_Lit
-PS_Output PShade_Tex_LitOrtho(VS_Output_Tex inp)
-{
-	//clip(inp.lit);
-
-	PS_Output outp = (PS_Output)0;
-
-	outp.col = inp.col * tex2D(texSampler, inp.txc);
-
-	float4 lightMod = calcLightModOrtho(inp.lmc);
-
-	outp.col = outp.col * colMod;
-	float alphaPreserve = outp.col.w;
-
-	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
-
-	outp.col *= alphaPreserve;
-	outp.col.w = 0;//alphaPreserve;
-
-	return outp;
+#define STD_MCR_PShade_Tex_Lit(lightName) \
+PS_Output PShade_Tex_Lit##lightName##(VS_Output_Tex inp) \
+{ \
+	PS_Output outp = (PS_Output)0; \
+	outp.col = inp.col * tex2D(texSampler, inp.txc); \
+ \
+	float4 lightMod = calcLightMod##lightName##(inp.lmc); \
+ \
+	outp.col = outp.col * colMod; \
+	float alphaPreserve = outp.col.w; \
+ \
+	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof; \
+ \
+	outp.col *= alphaPreserve; \
+	outp.col.w = 0; \
+	return outp; \
 }
 
-PS_Output PShade_Tex_LitPersp(VS_Output_Tex inp)
-{
-	//clip(inp.lit);
-
-	PS_Output outp = (PS_Output)0;
-	outp.col = inp.col * tex2D(texSampler, inp.txc);
-
-	float4 lightMod = calcLightModPersp(inp.lmc);
-
-	outp.col = outp.col * colMod;
-	float alphaPreserve = outp.col.w;
-
-	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
-
-	outp.col *= alphaPreserve;
-	outp.col.w = 0;//alphaPreserve;
-
-	return outp;
-}
-
-PS_Output PShade_Tex_LitPoint(VS_Output_Tex inp)
-{
-	//clip(inp.lit);
-
-	PS_Output outp = (PS_Output)0;
-	outp.col = inp.col * tex2D(texSampler, inp.txc);
-
-	float4 lightMod = calcLightModPoint(inp.lmc);
-
-	outp.col = outp.col * colMod;
-	float alphaPreserve = outp.col.w;
-
-	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
-
-	outp.col *= alphaPreserve;
-	outp.col.w = 0;//alphaPreserve;
-
-	return outp;
-}
-
+STD_MCR_PShade_Tex_Lit(Ortho)
+STD_MCR_PShade_Tex_Lit(Persp)
+STD_MCR_PShade_Tex_Lit(Point)
 
 
 PS_Output PShade_Sprite(VS_Output_Tex inp)
@@ -1279,58 +1106,26 @@ PS_Output PShade_LightPoint(VS_Output_Light inp)
 
 // clips translucent stuff (these don't work, need to ADAPTED for individual use, with a new set of VShades)
 // PShade_Tex_Light
-PS_Output PShade_Tex_LightOrtho(VS_Output_Tex inp)
-{
-	float4 testCol = inp.col * tex2D(texSampler, inp.txc);
-
-	float alphaPreserve = testCol.w;
-	clip (alphaPreserve <= 0.9 ? -1 : 1); // agressive alpha clip
-
-
-	inp.altPos = lightUnTransOrtho(inp.altPos);
-
-	float num = inp.altPos.z;
-
-	PS_Output outp = (PS_Output)0;
-	outp.col.x = num;
-
-	return outp;
+#define STD_MCR_PShade_Tex_Light(lightName) \
+PS_Output PShade_Tex_Light##lightName##(VS_Output_Tex inp) \
+{ \
+	float4 testCol = inp.col * tex2D(texSampler, inp.txc); \
+ \
+	float alphaPreserve = testCol.w; \
+	clip (alphaPreserve <= 0.9 ? -1 : 1); \
+ \
+	inp.altPos = lightUnTrans##lightName##(inp.altPos); \
+ \
+	float num = inp.altPos.z; \
+	PS_Output outp = (PS_Output)0; \
+	outp.col.x = num; \
+ \
+	return outp; \
 }
 
-PS_Output PShade_Tex_LightPersp(VS_Output_Tex inp)
-{
-	float4 testCol = inp.col * tex2D(texSampler, inp.txc);
-
-	float alphaPreserve = testCol.w;
-	clip (alphaPreserve <= 0.9 ? -1 : 1); // agressive alpha clip
-
-
-	inp.altPos = lightUnTransPersp(inp.altPos);
-
-	float num = inp.altPos.z;
-	PS_Output outp = (PS_Output)0;
-	outp.col.x = num;
-
-	return outp;
-}
-
-PS_Output PShade_Tex_LightPoint(VS_Output_Tex inp)
-{
-	float4 testCol = inp.col * tex2D(texSampler, inp.txc);
-
-	float alphaPreserve = testCol.w;
-	clip (alphaPreserve <= 0.9 ? -1 : 1); // agressive alpha clip
-
-
-	inp.altPos = lightUnTransPoint(inp.altPos);
-
-	float num = inp.altPos.z;
-	PS_Output outp = (PS_Output)0;
-	outp.col.x = num;
-
-	return outp;
-}
-
+STD_MCR_PShade_Tex_Light(Ortho)
+STD_MCR_PShade_Tex_Light(Persp)
+STD_MCR_PShade_Tex_Light(Point)
 
 
 VS_Output_Terrain VShade_Terrain(VS_Input_Terrain inp)
@@ -1347,56 +1142,21 @@ VS_Output_Terrain VShade_Terrain(VS_Input_Terrain inp)
 }
 
 // VShade_Terrain_Lit
-VS_Output_Terrain VShade_Terrain_LitOrtho(VS_Input_Terrain inp)
-{
-	VS_Output_Terrain outp = (VS_Output_Terrain)0;
-	outp.pos = mul(inp.pos, viewProj);
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.orgY = inp.pos.y;
-	outp.txc = inp.txc;
-	outp.w = inp.w;
-
-	// light
-	outp.lit = lightLitnessOrtho(inp.pos, inp.nrm);
-	outp.lmc = lightTransOrtho(inp.pos);
-
-	return outp;
+#define STD_MCR_VShade_Terrain_Lit(lightName) \
+VS_Output_Terrain VShade_Terrain_Lit##lightName##(VS_Input_Terrain inp) \
+{ \
+	VS_Output_Terrain outp = VShade_Terrain(inp); \
+ \
+	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
+	outp.lmc = lightTrans##lightName##(inp.pos); \
+ \
+	return outp; \
 }
 
-VS_Output_Terrain VShade_Terrain_LitPersp(VS_Input_Terrain inp)
-{
-	VS_Output_Terrain outp = (VS_Output_Terrain)0;
-	outp.pos = mul(inp.pos, viewProj);
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.orgY = inp.pos.y;
-	outp.txc = inp.txc;
-	outp.w = inp.w;
+STD_MCR_VShade_Terrain_Lit(Ortho)
+STD_MCR_VShade_Terrain_Lit(Persp)
+STD_MCR_VShade_Terrain_Lit(Point)
 
-	// light
-	outp.lit = lightLitnessPersp(inp.pos, inp.nrm);
-	outp.lmc = lightTransPersp(inp.pos);
-
-	return outp;
-}
-
-VS_Output_Terrain VShade_Terrain_LitPoint(VS_Input_Terrain inp)
-{
-	VS_Output_Terrain outp = (VS_Output_Terrain)0;
-	outp.pos = mul(inp.pos, viewProj);
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.orgY = inp.pos.y;
-	outp.txc = inp.txc;
-	outp.w = inp.w;
-
-	// light
-	outp.lit = lightLitnessPoint(inp.pos, inp.nrm);
-	outp.lmc = lightTransPoint(inp.pos);
-
-	return outp;
-}
 
 // VShade_Terrain_DynamicDecal
 VS_Output_Dyn VShade_Terrain_DynOrtho(VS_Input_Terrain inp)
@@ -1423,32 +1183,20 @@ VS_Output_Dyn VShade_Terrain_DynPersp(VS_Input_Terrain inp)
 
 
 // VShade_Terrain_Light
-VS_Output_Light VShade_Terrain_LightOrtho(VS_Input_Terrain inp)
-{
-	VS_Output_Light outp = (VS_Output_Light)0;
-	outp.pos = lightTransOrthoVP(inp.pos);
-	outp.altPos = outp.pos;
-
-	return outp;
+#define STD_MCR_VShade_Terrain_Light(lightName) \
+VS_Output_Light VShade_Terrain_Light##lightName##(VS_Input_Terrain inp) \
+{ \
+	VS_Output_Light outp = (VS_Output_Light)0; \
+	outp.pos = lightTrans##lightName##VP(inp.pos); \
+	outp.altPos = outp.pos; \
+ \
+	return outp; \
 }
 
-VS_Output_Light VShade_Terrain_LightPersp(VS_Input_Terrain inp)
-{
-	VS_Output_Light outp = (VS_Output_Light)0;
-	outp.pos = lightTransPerspVP(inp.pos);
-	outp.altPos = outp.pos;
+STD_MCR_VShade_Terrain_Light(Ortho)
+STD_MCR_VShade_Terrain_Light(Persp)
+STD_MCR_VShade_Terrain_Light(Point)
 
-	return outp;
-}
-
-VS_Output_Light VShade_Terrain_LightPoint(VS_Input_Terrain inp)
-{
-	VS_Output_Light outp = (VS_Output_Light)0;
-	outp.pos = lightTransPointVP(inp.pos);
-	outp.altPos = outp.pos;
-
-	return outp;
-}
 
 
 
@@ -1469,60 +1217,20 @@ VS_Output_Decal VShade_Terrain_Decal(VS_Input_Decal inp)
 }
 
 // VShade_Terrain_Decal_Lit
-VS_Output_Decal VShade_Terrain_Decal_LitOrtho(VS_Input_Decal inp)
-{
-	VS_Output_Decal outp = (VS_Output_Decal)0;
-	outp.pos = mul(inp.pos, viewProj);
-	//outp.pos.z = outp.pos.z - 0.001;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessOrtho(inp.pos, inp.nrm);
-	outp.lmc = lightTransOrtho(inp.pos);
-
-	return outp;
+#define STD_MCR_VShade_Terrain_Decal_Lit(lightName) \
+VS_Output_Decal VShade_Terrain_Decal_Lit##lightName##(VS_Input_Decal inp) \
+{ \
+	VS_Output_Decal outp = VShade_Terrain_Decal(inp); \
+ \
+	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
+	outp.lmc = lightTrans##lightName##(inp.pos); \
+ \
+	return outp; \
 }
 
-VS_Output_Decal VShade_Terrain_Decal_LitPersp(VS_Input_Decal inp)
-{
-	VS_Output_Decal outp = (VS_Output_Decal)0;
-	outp.pos = mul(inp.pos, viewProj);
-	//outp.pos.z = outp.pos.z - 0.001;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessPersp(inp.pos, inp.nrm);
-	outp.lmc = lightTransPersp(inp.pos);
-
-	return outp;
-}
-
-VS_Output_Decal VShade_Terrain_Decal_LitPoint(VS_Input_Decal inp)
-{
-	VS_Output_Decal outp = (VS_Output_Decal)0;
-	outp.pos = mul(inp.pos, viewProj);
-	//outp.pos.z = outp.pos.z - 0.001;
-	outp.altPos = outp.pos;
-	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
-	outp.col = inp.col;
-	outp.txc = inp.txc;
-
-	// light
-	outp.lit = lightLitnessPoint(inp.pos, inp.nrm);
-	outp.lmc = lightTransPoint(inp.pos);
-
-	return outp;
-}
-
-
-
-
+STD_MCR_VShade_Terrain_Decal_Lit(Ortho)
+STD_MCR_VShade_Terrain_Decal_Lit(Persp)
+STD_MCR_VShade_Terrain_Decal_Lit(Point)
 
 
 PS_Output PShade_Terrain(VS_Output_Terrain inp)
@@ -1543,47 +1251,22 @@ PS_Output PShade_Terrain(VS_Output_Terrain inp)
 }
 
 // PShade_Terrain_Lit
-PS_Output PShade_Terrain_LitOrtho(VS_Output_Terrain inp)
-{
-	//clip(inp.lit);
-
-	PS_Output outp = (PS_Output)0;
-	outp.col = (inp.w.x * tex2D(tex0Sampler, inp.txc) + inp.w.y * tex2D(tex1Sampler, inp.txc) + inp.w.z * tex2D(tex2Sampler, inp.txc) + inp.w.w * tex2D(tex3Sampler, inp.txc));
-	
-	float4 lightMod = calcLightModOrtho(inp.lmc);
-
-	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
-
-	return outp;
+#define STD_MCR_PShade_Terrain_Lit(lightName) \
+PS_Output PShade_Terrain_Lit##lightName##(VS_Output_Terrain inp) \
+{ \
+	PS_Output outp = (PS_Output)0; \
+	outp.col = (inp.w.x * tex2D(tex0Sampler, inp.txc) + inp.w.y * tex2D(tex1Sampler, inp.txc) + inp.w.z * tex2D(tex2Sampler, inp.txc) + inp.w.w * tex2D(tex3Sampler, inp.txc)); \
+ \
+	float4 lightMod = calcLightMod##lightName##(inp.lmc); \
+ \
+	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof; \
+ \
+	return outp; \
 }
 
-PS_Output PShade_Terrain_LitPersp(VS_Output_Terrain inp)
-{
-	//clip(inp.lit);
-
-	PS_Output outp = (PS_Output)0;
-	outp.col = (inp.w.x * tex2D(tex0Sampler, inp.txc) + inp.w.y * tex2D(tex1Sampler, inp.txc) + inp.w.z * tex2D(tex2Sampler, inp.txc) + inp.w.w * tex2D(tex3Sampler, inp.txc));
-
-	float4 lightMod = calcLightModPersp(inp.lmc);
-
-	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
-
-	return outp;
-}
-
-PS_Output PShade_Terrain_LitPoint(VS_Output_Terrain inp)
-{
-	//clip(inp.lit);
-
-	PS_Output outp = (PS_Output)0;
-	outp.col = (inp.w.x * tex2D(tex0Sampler, inp.txc) + inp.w.y * tex2D(tex1Sampler, inp.txc) + inp.w.z * tex2D(tex2Sampler, inp.txc) + inp.w.w * tex2D(tex3Sampler, inp.txc));
-
-	float4 lightMod = calcLightModPoint(inp.lmc);
-
-	outp.col = outp.col * (lightMod * inp.lit + lightAmbient) * lightCoof;
-
-	return outp;
-}
+STD_MCR_PShade_Terrain_Lit(Ortho)
+STD_MCR_PShade_Terrain_Lit(Persp)
+STD_MCR_PShade_Terrain_Lit(Point)
 
 
 
