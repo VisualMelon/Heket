@@ -82,7 +82,6 @@ std::vector<std::string> split(std::string str, std::string s)
 	int ni;
 	while ((ni = str.find(s)) != std::string::npos)
 	{
-
 		if (ni > 0)
 			output.push_back(str.substr(0, ni));
 		str = str.erase(0, ni + s.length());
@@ -2001,7 +2000,7 @@ public:
 		setAlpha(dxDevice);
 
 		UINT numPasses, pass;
-			effect.effect->Begin(&numPasses, 0);
+		effect.effect->Begin(&numPasses, 0);
 
 		// pass 0
 		if (drawArgs & DF_light)
@@ -2281,12 +2280,15 @@ skipPlainDecalPass:
 
 		UINT numPasses, pass;
 		effect.effect->Begin(&numPasses, 0);
-		effect.effect->BeginPass(0);
+		for (int i = 0; i < numPasses; i++)
+		{
+			effect.effect->BeginPass(i);
 
-		dxDevice->SetVertexDeclaration(vertexDecOver);
-		dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, overVerts, sizeof(vertexOver));
+			dxDevice->SetVertexDeclaration(vertexDecOver);
+			dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, overVerts, sizeof(vertexOver));
 
-		effect.effect->EndPass();
+			effect.effect->EndPass();
+		}
 		effect.effect->End();
 		
 		dxDevice->SetRenderState(D3DRS_ZENABLE, true);
@@ -3098,12 +3100,15 @@ void UNCRZ_sprite::drawSideOver(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat)
 
 		UINT numPasses, pass;
 		effect.effect->Begin(&numPasses, 0);
-		effect.effect->BeginPass(0);
+		for (int i = 0; i < numPasses; i++)
+		{
+			effect.effect->BeginPass(i);
 
-		dxDevice->SetVertexDeclaration(vertexDecOver);
-		dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, overVerts, sizeof(vertexOver));
+			dxDevice->SetVertexDeclaration(vertexDecOver);
+			dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, overVerts, sizeof(vertexOver));
 
-		effect.effect->EndPass();
+			effect.effect->EndPass();
+		}
 		effect.effect->End();
 		
 		dxDevice->SetRenderState(D3DRS_ZENABLE, true);
@@ -8470,11 +8475,14 @@ public:
 
 		UINT numPasses;
 		effect.effect->Begin(&numPasses, 0);
-		effect.effect->BeginPass(0);
+		for (int i = 0; i < numPasses; i++)
+		{
+			effect.effect->BeginPass(i);
 
-		dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, &clcTexVerts, sizeof(vertexPCT));
+			dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, &clcTexVerts, sizeof(vertexPCT));
 
-		effect.effect->EndPass();
+			effect.effect->EndPass();
+		}
 		effect.effect->End();
 	}
 };
@@ -9159,8 +9167,6 @@ public:
 		texVAlignOffset = 0.0f;
 	}
 };
-
-
 
 void drawData::startTimer(bool preFlushDx)
 	{
@@ -12877,14 +12883,17 @@ void drawOver(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_over* over)
 
 	setAlpha(dxDevice, over->alphaMode);
 
-	UINT numPasses, pass;
+	UINT numPasses;
 	over->effect.effect->Begin(&numPasses, 0);
-	over->effect.effect->BeginPass(0);
+	for (int i = 0; i < numPasses; i++)
+	{
+		over->effect.effect->BeginPass(i);
 
-	dxDevice->SetVertexDeclaration(vertexDecOver);
-	dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, overVerts, sizeof(vertexOver));
+		dxDevice->SetVertexDeclaration(vertexDecOver);
+		dxDevice->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, overVerts, sizeof(vertexOver));
 
-	over->effect.effect->EndPass();
+		over->effect.effect->EndPass();
+	}
 	over->effect.effect->End();
 	
 	dxDevice->SetRenderState(D3DRS_ZENABLE, true);
@@ -13023,8 +13032,14 @@ void initOvers(LPDIRECT3DDEVICE9 dxDevice)
 	tempOver->useTex = true; // write a "loadtex" func or something?
 	createTexture(dxDevice, "view_main", &tempOver->tex, &textures);
 	tempOver->useTex0 = true;
-	createTexture(dxDevice, "ui/overtex.tga", &tempOver->tex0, &textures);
-	tempOver->alphaMode = AM_none;
+	createTexture(dxDevice, "ui/overtex0.tga", &tempOver->tex0, &textures);
+	tempOver->useTex1 = true;
+	createTexture(dxDevice, "ui/overtex1.tga", &tempOver->tex1, &textures);
+	tempOver->useTex2 = true;
+	createTexture(dxDevice, "ui/overtex2.tga", &tempOver->tex2, &textures);
+	tempOver->useTex3 = true;
+	createTexture(dxDevice, "ui/overtex3.tga", &tempOver->tex3, &textures);
+	tempOver->alphaMode = AM_nice;
 	tempOver->clearView = true;
 	tempOver->clearColor = D3DCOLOR_XRGB(0, 0, 0);
 	tempOver->colMod = D3DXVECTOR4(1, 1, 1, 1);
