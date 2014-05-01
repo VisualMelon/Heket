@@ -292,17 +292,17 @@ float lightLitnessPersp(float4 pos, float4 nrm)
 	return res;
 }
 
-float lightLitnessPoint(float4 pos, float4 nrm)
+/*float lightLitnessPoint(float4 pos, float4 nrm)
 {
 	float4 plDir = pos - lightPos;
 	plDir = normaliseXYZ(plDir);
 
 	float res = -dot(nrm, plDir);
 	return res;
-}
+}*/
 
 // reflectiveness (not quite specular)
-/*float lightLitnessPoint(float4 pos, float4 nrm)
+float lightLitnessPoint(float4 pos, float4 nrm)
 {
 	float4 plDir = pos - lightPos;
 	plDir = normaliseXYZ(plDir);
@@ -313,7 +313,7 @@ float lightLitnessPoint(float4 pos, float4 nrm)
 	float res = -dot(nrm, plDir); // dullness
 	res += -dot(plDir, reflect(eDir, nrm)); // reflectivness
 	return res;
-}*/
+}
 
 float lightLitness(float4 pos, float4 nrm)
 {
@@ -557,7 +557,16 @@ VS_Output_Tex VShade_Tex_Test(VS_Input_Tex inp)
 #define STD_MCR_VShade_Tex_Lit(lightName) \
 VS_Output_Tex VShade_Tex_Lit##lightName##(VS_Input_Tex inp) \
 { \
-	VS_Output_Tex outp = VShade_Tex(inp); \
+	VS_Output_Tex outp = (VS_Output_Tex)0; \
+	if (inp.tti >= 0) \
+	{ \
+		inp.pos = mul(inp.pos, transarr[inp.tti]); \
+		inp.nrm = mul(inp.nrm, transarr[inp.tti]); \
+	} \
+	outp.pos = mul(inp.pos, viewProj); \
+	outp.altPos = outp.pos; \
+	outp.col = inp.col; \
+	outp.txc = inp.txc; \
  \
 	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
 	outp.lmc = lightTrans##lightName##(inp.pos); \
@@ -639,7 +648,19 @@ VS_Output_Tex VShade_Sprite(VS_Input_Tex inp)
 #define STD_MCR_VShade_Sprite_Lit(lightName) \
 VS_Output_Tex VShade_Sprite_Lit##lightName##(VS_Input_Tex inp) \
 { \
-	VS_Output_Tex outp = VShade_Sprite(inp); \
+	VS_Output_Tex outp = (VS_Output_Tex)0; \
+	float4 centre = (float4)0; \
+	if (inp.tti >= 0) \
+	{ \
+		centre = spriteLoc[inp.tti]; \
+	} \
+	inp.pos *= spriteDim; \
+	centre = mul(centre, viewMat); \
+	outp.pos = mul(centre + inp.pos, projMat); \
+	outp.altPos = outp.pos; \
+	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth; \
+	outp.col = inp.col; \
+	outp.txc = inp.txc; \
  \
 	/*(not implemented, this is only here because I can't be bothered to remove it, I'd much rather type this, I make sense)*/ \
 	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
@@ -778,7 +799,17 @@ VS_Output_Decal VShade_Decal(VS_Input_Decal inp)
 #define STD_MCR_VShade_Decal_Lit(lightName) \
 VS_Output_Decal VShade_Decal_Lit##lightName##(VS_Input_Decal inp) \
 { \
-	VS_Output_Decal outp = VShade_Decal(inp); \
+	VS_Output_Decal outp = (VS_Output_Decal)0; \
+	if (inp.tti >= 0) \
+	{ \
+		inp.pos = mul(inp.pos, transarr[inp.tti]); \
+		inp.nrm = mul(inp.nrm, transarr[inp.tti]); \
+	} \
+	outp.pos = mul(inp.pos, viewProj); \
+	outp.altPos = outp.pos; \
+	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth; \
+	outp.col = inp.col; \
+	outp.txc = inp.txc; \
  \
 	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
 	outp.lmc = lightTrans##lightName##(inp.pos); \
@@ -1145,7 +1176,13 @@ VS_Output_Terrain VShade_Terrain(VS_Input_Terrain inp)
 #define STD_MCR_VShade_Terrain_Lit(lightName) \
 VS_Output_Terrain VShade_Terrain_Lit##lightName##(VS_Input_Terrain inp) \
 { \
-	VS_Output_Terrain outp = VShade_Terrain(inp); \
+	VS_Output_Terrain outp = (VS_Output_Terrain)0; \
+	outp.pos = mul(inp.pos, viewProj); \
+	outp.altPos = outp.pos; \
+	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth; \
+	outp.orgY = inp.pos.y; \
+	outp.txc = inp.txc; \
+	outp.w = inp.w; \
  \
 	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
 	outp.lmc = lightTrans##lightName##(inp.pos); \
@@ -1220,7 +1257,12 @@ VS_Output_Decal VShade_Terrain_Decal(VS_Input_Decal inp)
 #define STD_MCR_VShade_Terrain_Decal_Lit(lightName) \
 VS_Output_Decal VShade_Terrain_Decal_Lit##lightName##(VS_Input_Decal inp) \
 { \
-	VS_Output_Decal outp = VShade_Terrain_Decal(inp); \
+	VS_Output_Decal outp = (VS_Output_Decal)0; \
+	outp.pos = mul(inp.pos, viewProj); \
+	outp.altPos = outp.pos; \
+	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth; \
+	outp.col = inp.col; \
+	outp.txc = inp.txc; \
  \
 	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
 	outp.lmc = lightTrans##lightName##(inp.pos); \
@@ -1368,15 +1410,107 @@ PS_Output PShade_Over_Final_Fun(VS_Output_Over inp)
 	return outp;
 }
 
+PS_Output PShade_Over_Final_Fun1(VS_Output_Over inp)
+{
+	PS_Output outp = (PS_Output)0;
+
+	float4 coldat;
+	float4 coldat2;
+	float2 coords;
+	float2 endcoords;
+	float xc = inp.txc.x / texData.z;
+	float yc = inp.txc.y / texData.w;
+
+	float mod;
+	float modx;
+	float mody;
+
+	float xt = ticker * 1.0;// + 0.01 * xc;
+	float yt = ticker * 1.0;// + 0.01 * yc;
+
+	// first
+	mod = 20;
+	modx = mod * texData.z;
+	mody = mod * texData.w;
+
+	endcoords = inp.txc;
+	coords = inp.txc + float2(-xt * 1.5, sin(yt * 1.3 + 1.2));
+	coldat = tex2D(tex0LinearSampler, coords);
+	coords = inp.txc + float2(sin(xt * 1.1 + 0.4), yt);
+	coldat2 = tex2D(tex1LinearSampler, coords);
+	endcoords.x += (coldat.r - 0.5) * modx * coldat2.r;
+	endcoords.y += (coldat.g - 0.5) * mody * coldat2.g;
+
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, endcoords) * 0.8;
+
+	// second
+	mod = 50;
+	modx = mod * texData.z;
+	mody = mod * texData.w;
+
+	endcoords = inp.txc;
+	coords = inp.txc + float2(-cos(xt + 0.9), yt * 1.2);
+	coldat = tex2D(tex2LinearSampler, coords);
+	coords = inp.txc + float2(xt * 1.3, cos(yt * 0.9 + 0.2));
+	coldat2 = tex2D(tex3LinearSampler, coords);
+	endcoords.x += (coldat.r - 0.5) * modx * coldat2.r;
+	endcoords.y += (coldat.g - 0.5) * mody * coldat2.g;
+
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, endcoords) * 0.2;
+
+	// alpha preserve
+	outp.col.w = 0.6;
+	return outp;
+}
+
+PS_Output PShade_Over_Final_Fun2(VS_Output_Over inp)
+{
+	PS_Output outp = (PS_Output)0;
+
+	float n = 3;
+	float g = 5;
+	float coof = 1.0 / (2.0 * n + 1);
+	float2 coords = inp.txc;
+	coords.y -= texData.w * n * g;
+
+	// should be 2n + 1 of these
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, coords) * coof;
+	coords.y += texData.w * g;
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, coords) * coof;
+	coords.y += texData.w * g;
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, coords) * coof;
+	coords.y += texData.w * g;
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, coords) * coof;
+	coords.y += texData.w * g;
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, coords) * coof;
+	coords.y += texData.w * g;
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, coords) * coof;
+	coords.y += texData.w * g;
+	outp.col = outp.col + tex2D(texNonMipLinearSampler, coords) * coof;
+	coords.y += texData.w * g;
+
+	// alpha preserve
+	outp.col.w = 0.5;
+	return outp;
+}
+
 PS_Output PShade_Over_Final_Wobble(VS_Output_Over inp)
 {
 	PS_Output outp = (PS_Output)0;
 
 	float4 coldat = tex2D(tex0LinearSampler, inp.txc);
+	float rmod = coldat.x * coldat.w;
+	float xc = inp.txc.x / texData.z;
+	float yc = inp.txc.y / texData.w;
 
-	inp.txc.x += sin(ticker * 10.0 + 0.4 * inp.txc.y / texData.w) * texData.z * 10.0 * coldat.x * coldat.w;
+	float c = ticker * 10.0 + 0.1 * yc + sin(0.02 * xc);
+	float t = sin(c) * (cos(c) * 0.4 + 0.6);
+	
+	//inp.txc.x += t * texData.z * 5.0 * rmod;
 
 	outp.col = tex2D(texNonMipLinearSampler, inp.txc);
+
+	outp.col *= (1.0 + t * 0.2 * rmod);
 
 	outp.col.w = 1;
 	return outp;
@@ -1944,11 +2078,16 @@ technique over_final
 
 technique over_final_fun
 {
-	pass over
+	pass over0
 	{
 		VertexShader = compile vs_2_0 VShade_Over_Final();
 		PixelShader = compile ps_2_0 PShade_Over_Final_Fun();
 	}
+	/*pass over1
+	{
+		VertexShader = compile vs_2_0 VShade_Over_Final();
+		PixelShader = compile ps_2_0 PShade_Over_Final_Fun2();
+	}*/
 }
 
 technique over_final_flatalpha
