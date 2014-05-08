@@ -518,14 +518,13 @@ PS_Output PShade(VS_Output inp)
 	return outp;
 }
 
+
+// Tex
 VS_Output_Tex VShade_Tex(VS_Input_Tex inp)
 {
 	VS_Output_Tex outp = (VS_Output_Tex)0;
-	if (inp.tti >= 0)
-	{
-		inp.pos = mul(inp.pos, transarr[inp.tti]);
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]);
-	}
+	inp.pos = mul(inp.pos, transarr[inp.tti]);
+	inp.nrm = mul(inp.nrm, transarr[inp.tti]);
 	outp.pos = mul(inp.pos, viewProj);
 	outp.altPos = outp.pos;
 	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
@@ -539,11 +538,8 @@ VS_Output_Tex VShade_Tex(VS_Input_Tex inp)
 VS_Output_Tex VShade_Tex_Test(VS_Input_Tex inp)
 {
 	VS_Output_Tex outp = (VS_Output_Tex)0;
-	if (inp.tti >= 0)
-	{
-		inp.pos = mul(inp.pos, transarr[inp.tti]);
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]);
-	}
+	inp.pos = mul(inp.pos, transarr[inp.tti]);
+	inp.nrm = mul(inp.nrm, transarr[inp.tti]);
 	outp.pos = mul(inp.pos, viewProj);
 	outp.altPos = outp.pos;
 	outp.col = inp.col;
@@ -558,11 +554,8 @@ VS_Output_Tex VShade_Tex_Test(VS_Input_Tex inp)
 VS_Output_Tex VShade_Tex_Lit##lightName##(VS_Input_Tex inp) \
 { \
 	VS_Output_Tex outp = (VS_Output_Tex)0; \
-	if (inp.tti >= 0) \
-	{ \
-		inp.pos = mul(inp.pos, transarr[inp.tti]); \
-		inp.nrm = mul(inp.nrm, transarr[inp.tti]); \
-	} \
+	inp.pos = mul(inp.pos, transarr[inp.tti]); \
+	inp.nrm = mul(inp.nrm, transarr[inp.tti]); \
 	outp.pos = mul(inp.pos, viewProj); \
 	outp.altPos = outp.pos; \
 	outp.col = inp.col; \
@@ -578,20 +571,12 @@ STD_MCR_VShade_Tex_Lit(Ortho)
 STD_MCR_VShade_Tex_Lit(Persp)
 STD_MCR_VShade_Tex_Lit(Point)
 
-
 // VShade_Tex_Light
 #define STD_MCR_VShade_Tex_Light(lightName) \
 VS_Output_Light VShade_Tex_Light##lightName##(VS_Input_Tex inp) \
 { \
 	VS_Output_Light outp = (VS_Output_Light)0; \
-	if (inp.tti >= 0) \
-	{ \
-		outp.pos = lightTrans##lightName##VP(mul(inp.pos, transarr[inp.tti])); \
-	} \
-	else \
-	{ \
-		outp.pos = lightTrans##lightName##VP(inp.pos); \
-	} \
+	outp.pos = lightTrans##lightName##VP(mul(inp.pos, transarr[inp.tti])); \
 	outp.altPos = outp.pos; \
 	return outp; \
 }
@@ -599,6 +584,55 @@ VS_Output_Light VShade_Tex_Light##lightName##(VS_Input_Tex inp) \
 STD_MCR_VShade_Tex_Light(Ortho)
 STD_MCR_VShade_Tex_Light(Persp)
 STD_MCR_VShade_Tex_Light(Point)
+
+
+
+// TexNoTti
+VS_Output_Tex VShade_TexNoTti(VS_Input_Tex inp)
+{
+	VS_Output_Tex outp = (VS_Output_Tex)0;
+	outp.pos = mul(inp.pos, viewProj);
+	outp.altPos = outp.pos;
+	outp.altPos.z = outp.altPos.z * outp.altPos.w * invFarDepth;
+	outp.col = inp.col;
+	outp.txc = inp.txc;
+
+	return outp;
+}
+
+// VShade_TexNoTti_Lit
+#define STD_MCR_VShade_TexNoTti_Lit(lightName) \
+VS_Output_Tex VShade_TexNoTti_Lit##lightName##(VS_Input_Tex inp) \
+{ \
+	VS_Output_Tex outp = (VS_Output_Tex)0; \
+	outp.pos = mul(inp.pos, viewProj); \
+	outp.altPos = outp.pos; \
+	outp.col = inp.col; \
+	outp.txc = inp.txc; \
+ \
+	outp.lit = lightLitness##lightName##(inp.pos, inp.nrm); \
+	outp.lmc = lightTrans##lightName##(inp.pos); \
+ \
+	return outp; \
+}
+
+STD_MCR_VShade_TexNoTti_Lit(Ortho)
+STD_MCR_VShade_TexNoTti_Lit(Persp)
+STD_MCR_VShade_TexNoTti_Lit(Point)
+
+// VShade_Tex_Light
+#define STD_MCR_VShade_TexNoTti_Light(lightName) \
+VS_Output_Light VShade_TexNoTti_Light##lightName##(VS_Input_Tex inp) \
+{ \
+	VS_Output_Light outp = (VS_Output_Light)0; \
+	outp.pos = lightTrans##lightName##VP(inp.pos); \
+	outp.altPos = outp.pos; \
+	return outp; \
+}
+
+STD_MCR_VShade_TexNoTti_Light(Ortho)
+STD_MCR_VShade_TexNoTti_Light(Persp)
+STD_MCR_VShade_TexNoTti_Light(Point)
 
 
 
@@ -1832,6 +1866,55 @@ technique simpleTex_light
 	pass lightpoint
 	{ // LightPoint - this shoudln't do anthing.... it should never be called!
 		VertexShader = compile vs_2_0 VShade_Tex_LightPoint();
+		PixelShader = compile ps_2_0 PShade_LightPoint();
+	}
+}
+
+
+technique simpleTexNoTti
+{
+	pass unlit
+	{
+		VertexShader = compile vs_2_0 VShade_TexNoTti();
+		PixelShader = compile ps_2_0 PShade_Tex();
+	}
+
+	pass litortho
+	{ // LitOrtho
+		VertexShader = compile vs_2_0 VShade_TexNoTti_LitOrtho();
+		PixelShader = compile ps_2_0 PShade_Tex_LitOrtho();
+	}
+
+	pass litpersp
+	{ // LitPersp
+		VertexShader = compile vs_2_0 VShade_TexNoTti_LitPersp();
+		PixelShader = compile ps_2_0 PShade_Tex_LitPersp();
+	}
+
+	pass litpoint
+	{ // LitPoint
+		VertexShader = compile vs_2_0 VShade_TexNoTti_LitPoint();
+		PixelShader = compile ps_2_0 PShade_Tex_LitPoint();
+	}
+}
+
+technique simpleTexNoTti_light
+{
+	pass lightortho
+	{ // LightOrtho
+		VertexShader = compile vs_2_0 VShade_TexNoTti_LightOrtho();
+		PixelShader = compile ps_2_0 PShade_LightOrtho(); // no trans
+	}
+
+	pass lightpersp
+	{ // LightPersp
+		VertexShader = compile vs_2_0 VShade_TexNoTti_LightPersp();
+		PixelShader = compile ps_2_0 PShade_LightPersp();
+	}
+
+	pass lightpoint
+	{ // LightPoint - this shoudln't do anthing.... it should never be called!
+		VertexShader = compile vs_2_0 VShade_TexNoTti_LightPoint();
 		PixelShader = compile ps_2_0 PShade_LightPoint();
 	}
 }
