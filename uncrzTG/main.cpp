@@ -115,6 +115,57 @@ const DWORD TID_tex3 = 3;
 
 struct UNCRZ_obj;
 
+const int maxMats = 8; // heh
+const int maxClips = 4; // heh
+struct UNCRZ_matrix
+{
+public:
+	std::string name;
+
+	LPD3DXMATRIX mat;
+
+	UNCRZ_matrix();
+	UNCRZ_matrix(std::string, LPD3DXMATRIX);
+};
+
+UNCRZ_matrix::UNCRZ_matrix()
+{
+
+}
+
+UNCRZ_matrix::UNCRZ_matrix(std::string nameN, LPD3DXMATRIX matN)
+{
+	name = nameN;
+	mat = matN;
+}
+
+UNCRZ_matrix* getMatrix(char* name, std::vector<UNCRZ_matrix*>* matrixList)
+{
+	for (int i = matrixList->size() - 1; i >= 0; i--)
+	{
+		if (matrixList->at(i)->name == name)
+		{
+			return matrixList->at(i);
+		}
+	}
+
+	return NULL;
+}
+
+void setMatrix(std::string nameN, LPD3DXMATRIX matN, std::vector<UNCRZ_matrix*>* matrixList)
+{
+	for (int i = matrixList->size() - 1; i >= 0; i--)
+	{
+		if (matrixList->at(i)->name == nameN)
+		{
+			matrixList->at(i)->mat = matN;
+			return;
+		}
+	}
+
+	matrixList->push_back(new UNCRZ_matrix(nameN, matN));
+}
+
 struct UNCRZ_texture
 {
 public:
@@ -287,6 +338,8 @@ public:
 	float lightDepth;
 	float lightConeness;
 
+	DWORD clipEnable;
+
 	float ticker;
 
 	int cullCount;
@@ -315,6 +368,18 @@ public:
 
 	LARGE_INTEGER hridstart;
 	LARGE_INTEGER hridend;
+
+	void disableClip(LPDIRECT3DDEVICE9 dxDevice)
+	{
+		dxDevice->SetRenderState(D3DRS_CLIPPLANEENABLE, 0);
+		dxDevice->SetRenderState(D3DRS_CLIPPING, false);
+	}
+
+	void enableClip(LPDIRECT3DDEVICE9 dxDevice)
+	{
+		dxDevice->SetRenderState(D3DRS_CLIPPLANEENABLE, clipEnable);
+		dxDevice->SetRenderState(D3DRS_CLIPPING, true);
+	}
 
 	drawData(LPD3DXMATRIX viewProjN, LPD3DXMATRIX viewMatN, LPD3DXMATRIX projMatN, std::vector<lightData*> lightDatasN, std::vector<dynamicDecalData*> dynamicDecalDatasN, float lightCoofN)
 	{
@@ -1349,6 +1414,8 @@ public:
 	D3DXHANDLE eyePos;
 	D3DXHANDLE eyeDir;
 	D3DXHANDLE lightViewProj;
+	D3DXHANDLE mats;
+	D3DXHANDLE matsElems[maxMats];
 	D3DXHANDLE ticker;
 
 	void setLightData(lightData* ld)
@@ -1539,6 +1606,16 @@ public:
 		effect->SetTechnique(tech);
 	}
 
+	void setMats(LPD3DXMATRIX marr, int count)
+	{
+		effect->SetMatrixArray(mats, (const D3DXMATRIX*)marr, count);
+	}
+
+	void setMat(int idx, LPD3DXMATRIX mat)
+	{
+		effect->SetMatrix(matsElems[idx], (const D3DXMATRIX*)mat);
+	}
+
 	void setTicker(float val)
 	{
 		effect->SetFloat(ticker, val);
@@ -1595,6 +1672,11 @@ public:
 		eyePos = effect->GetParameterByName(NULL, "eyePos");
 		eyeDir = effect->GetParameterByName(NULL, "eyeDir");
 		lightViewProj = effect->GetParameterByName(NULL, "lightViewProj");
+		mats = effect->GetParameterByName(NULL, "mats");
+		for (int i = 0; i < maxMats; i++)
+		{
+			matsElems[i] = effect->GetParameterElement(mats, i);
+		}
 		ticker = effect->GetParameterByName(NULL, "ticker");
 		name = nameN;
 	}
@@ -1849,10 +1931,6 @@ public:
 	std::string name;
 
 	UNCRZ_effect effect;
-	D3DXHANDLE tech;
-	D3DXHANDLE lightTech;
-	D3DXHANDLE overTech;
-	D3DXVECTOR4 colMod;
 
 	bool useTex;
 	LPDIRECT3DTEXTURE9 tex;
@@ -1864,15 +1942,22 @@ public:
 	LPDIRECT3DTEXTURE9 tex2;
 	bool useTex3;
 	LPDIRECT3DTEXTURE9 tex3;
-
-	float dimX, dimY, dimZ;
+	D3DXHANDLE tech;
+	D3DXHANDLE lightTech;
+	D3DXHANDLE overTech;
+	D3DXVECTOR4 colMod;
 	DWORD alphaMode;
 	DWORD sideWiseAlphaMode;
 	DWORD lightingMode;
 
+	float dimX, dimY, dimZ;
+
+	UNCRZ_matrix* mats[maxMats];
+
 	void zeroIsh();
 	void setAlpha(LPDIRECT3DDEVICE9);
 	void setTextures();
+	void setMats();
 	void setSideWiseAlpha(LPDIRECT3DDEVICE9);
 	void draw(LPDIRECT3DDEVICE9, drawData*, UNCRZ_sprite_buffer*, UNCRZ_sprite_data*, int, int, DWORD, DWORD);
 	void drawSideWise(LPDIRECT3DDEVICE9, drawData*, UNCRZ_sprite_buffer*, UNCRZ_sprite_data*, int, int, DWORD, DWORD);
@@ -1919,6 +2004,9 @@ public:
 	bool acceptDecals;
 	
 	bool sectionEnabled; // whether it should draw or not
+
+	// fun fun fun
+	UNCRZ_matrix* mats[maxMats];
 
 	// indicates whether the section should not be rendered for the rest of this draw sequence (for multi-draw sequences)
 	bool curDrawCull;
@@ -1968,10 +2056,23 @@ public:
 			effect.setTexture3(tex3);
 	}
 
+	void setMats()
+	{
+		for (int i = 0; i < maxMats; i++)
+		{
+			if (mats[i] != NULL)
+			{
+				effect.setMat(i, mats[i]->mat);
+			}
+		}
+	}
+
 	// doesn't support any alphaMode except AM_none
 	void drawMany(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_model** arr, int count, int secIndex, DWORD drawArgs)
 	{
 		HRESULT res;
+
+		ddat->enableClip(dxDevice);
 
 		// model
 		if (drawArgs & DF_light)
@@ -1989,6 +2090,7 @@ public:
 		}
 
 		setTextures();
+		setMats();
 
 		effect.setEyePos(&ddat->eyePos);
 		effect.setEyeDir(&ddat->eyeDir);
@@ -2248,6 +2350,8 @@ skipPlainDecalPass:
 
 	void drawSideOver(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat)
 	{
+		ddat->disableClip(dxDevice);
+
 		D3DXMATRIX idMat;
 		D3DXMatrixIdentity(&idMat);
 		dxDevice->SetRenderTarget(0, ddat->targetSurface);
@@ -2327,6 +2431,8 @@ skipPlainDecalPass:
 	{
 		HRESULT res;
 
+		ddat->enableClip(dxDevice);
+
 		if (drawArgs & DF_light)
 		{
 			effect.setTechnique(lightTech);
@@ -2346,6 +2452,7 @@ skipPlainDecalPass:
 			effect.setcolMod(&colMod.x);
 		
 		setTextures();
+		setMats();
 
 		// disable blend (either side render  or  alphaMode is set to AM_none  or  DF_light)
 		dxDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
@@ -2527,6 +2634,11 @@ skipPlainDecalPass:
 		useTex1 = false;
 		useTex2 = false;
 		useTex3 = false;
+
+		for (int i = 0; i < maxMats; i++)
+		{
+			mats[i] = NULL;
+		}
 	}
 
 	UNCRZ_section()
@@ -2836,6 +2948,11 @@ void UNCRZ_sprite::zeroIsh()
 		useTex1 = false;
 		useTex2 = false;
 		useTex3 = false;
+
+		for (int i = 0; i < maxMats; i++)
+		{
+			mats[i] = NULL;
+		}
 	}
 
 void UNCRZ_sprite::setAlpha(LPDIRECT3DDEVICE9 dxDevice)
@@ -2874,6 +2991,17 @@ void UNCRZ_sprite::setTextures()
 			effect.setTexture3(tex3);
 	}
 
+void UNCRZ_sprite::setMats()
+	{
+		for (int i = 0; i < maxMats; i++)
+		{
+			if (mats[i] != NULL)
+			{
+				effect.setMat(i, mats[i]->mat);
+			}
+		}
+	}
+
 void UNCRZ_sprite::setSideWiseAlpha(LPDIRECT3DDEVICE9 dxDevice)
 	{
 		switch (sideWiseAlphaMode)
@@ -2899,6 +3027,8 @@ void UNCRZ_sprite::setSideWiseAlpha(LPDIRECT3DDEVICE9 dxDevice)
 void UNCRZ_sprite::draw(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_sprite_buffer* sbuff, UNCRZ_sprite_data* larr, int offset, int count, DWORD drawArgs, DWORD spriteDrawArgs)
 	{
 		HRESULT res;
+
+		ddat->enableClip(dxDevice);
 
 		if (spriteDrawArgs & SD_depth)
 			dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
@@ -2949,6 +3079,7 @@ void UNCRZ_sprite::draw(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_sprite
 		effect.setTicker(ddat->ticker);
 
 		setTextures();
+		setMats();
 
 		effect.setViewMat(ddat->viewMat);
 		effect.setProjMat(ddat->projMat);
@@ -3068,6 +3199,8 @@ void UNCRZ_sprite::drawSideWise(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCR
 
 void UNCRZ_sprite::drawSideOver(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat)
 	{
+		ddat->disableClip(dxDevice);
+
 		D3DXMATRIX idMat;
 		D3DXMatrixIdentity(&idMat);
 		dxDevice->SetRenderTarget(0, ddat->targetSurface);
@@ -3117,6 +3250,8 @@ void UNCRZ_sprite::drawSideOver(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat)
 
 void UNCRZ_sprite::drawToSide(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, UNCRZ_sprite_buffer* sbuff, UNCRZ_sprite_data* larr, int offset, int count, DWORD drawArgs, DWORD spriteDrawArgs)
 	{
+		ddat->enableClip(dxDevice);
+
 		dxDevice->SetRenderTarget(0, ddat->sideSurface);
 		dxDevice->SetViewport(ddat->sideVp);
 		//dxDevice->SetDepthStencilSurface(ddat->zSideSurface);
@@ -4541,6 +4676,8 @@ struct UNCRZ_terrain
 	{
 		HRESULT res;
 
+		ddat->enableClip(dxDevice);
+
 		dxDevice->SetVertexDeclaration(vertexDec);
 		dxDevice->SetStreamSource(0, vBuff, 0, stride);
 		dxDevice->SetIndices(iBuff);
@@ -5079,6 +5216,8 @@ struct UNCRZ_frion
 	void draw(LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, DWORD drawArgs)
 	{
 		HRESULT res;
+
+		ddat->enableClip(dxDevice);
 
 		dxDevice->SetVertexDeclaration(vertexDec);
 		dxDevice->SetStreamSource(0, vBuff, 0, stride);
@@ -5673,7 +5812,7 @@ UNCRZ_effect createEffect(LPDIRECT3DDEVICE9 dxDevice, char* fileName, DWORD vert
 	return res;
 }
 
-void loadSpritesFromFile(char* fileName, LPDIRECT3DDEVICE9 dxDevice, std::vector<UNCRZ_sprite*>* spriteList, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList)
+void loadSpritesFromFile(char* fileName, LPDIRECT3DDEVICE9 dxDevice, std::vector<UNCRZ_sprite*>* spriteList, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList, std::vector<UNCRZ_matrix*>* matrixList)
 {
 	UNCRZ_sprite* curSprite;
 
@@ -5709,6 +5848,11 @@ void loadSpritesFromFile(char* fileName, LPDIRECT3DDEVICE9 dxDevice, std::vector
 				{
 					curSprite = new UNCRZ_sprite(data[1]);
 				}
+				else if (data[0] == "mat")
+				{
+					int idx = stoi(data[1]);
+					curSprite->mats[idx] = getMatrix((char*)data[2].c_str(), matrixList);
+				}
 				else if (data[0] == "texture")
 				{
 					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSprite->tex, textureList);
@@ -5716,22 +5860,22 @@ void loadSpritesFromFile(char* fileName, LPDIRECT3DDEVICE9 dxDevice, std::vector
 				}
 				else if (data[0] == "texture0")
 				{
-					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSprite->tex0, textureList);
+					createTexture(dxDevice, (char*)line.substr(9).c_str(), &curSprite->tex0, textureList);
 					curSprite->useTex0 = true;
 				}
 				else if (data[0] == "texture1")
 				{
-					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSprite->tex1, textureList);
+					createTexture(dxDevice, (char*)line.substr(9).c_str(), &curSprite->tex1, textureList);
 					curSprite->useTex1 = true;
 				}
 				else if (data[0] == "texture2")
 				{
-					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSprite->tex2, textureList);
+					createTexture(dxDevice, (char*)line.substr(9).c_str(), &curSprite->tex2, textureList);
 					curSprite->useTex2 = true;
 				}
 				else if (data[0] == "texture3")
 				{
-					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSprite->tex3, textureList);
+					createTexture(dxDevice, (char*)line.substr(9).c_str(), &curSprite->tex3, textureList);
 					curSprite->useTex3 = true;
 				}
 				else if (data[0] == "dim")
@@ -5873,7 +6017,7 @@ UNCRZ_FBF_anim* getFBF_anim(std::vector<UNCRZ_FBF_anim*>* animList, std::string 
 	return NULL;
 }
 
-void loadModelsFromFile(char* fileName, LPDIRECT3DDEVICE9 dxDevice, std::vector<UNCRZ_model*>* modelList, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList, std::vector<vertexPC>* nrmVis)
+void loadModelsFromFile(char* fileName, LPDIRECT3DDEVICE9 dxDevice, std::vector<UNCRZ_model*>* modelList, std::vector<UNCRZ_effect>* effectList, std::vector<UNCRZ_texture*>* textureList, std::vector<UNCRZ_matrix*>* matrixList, std::vector<vertexPC>* nrmVis)
 {
 	std::vector<strPair> reps;
 	std::vector<iOff> iOffs;
@@ -6077,6 +6221,11 @@ oldSeg:
 					curSection->effect = createEffect(dxDevice, (char*)line.substr(11).c_str(), vertexType, line.substr(11), effectList);
 					//effectList->push_back(curSection->effect); // pretty sure we don't want this (done by createEffect these days)
 				}
+				else if (data[0] == "mat")
+				{
+					int idx = stoi(data[1]);
+					curSection->mats[idx] = getMatrix((char*)data[2].c_str(), matrixList);
+				}
 				else if (data[0] == "texture")
 				{
 					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSection->tex, textureList);
@@ -6084,22 +6233,22 @@ oldSeg:
 				}
 				else if (data[0] == "texture0")
 				{
-					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSection->tex0, textureList);
+					createTexture(dxDevice, (char*)line.substr(9).c_str(), &curSection->tex0, textureList);
 					curSection->useTex0 = true;
 				}
 				else if (data[0] == "texture1")
 				{
-					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSection->tex1, textureList);
+					createTexture(dxDevice, (char*)line.substr(9).c_str(), &curSection->tex1, textureList);
 					curSection->useTex1 = true;
 				}
 				else if (data[0] == "texture2")
 				{
-					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSection->tex2, textureList);
+					createTexture(dxDevice, (char*)line.substr(9).c_str(), &curSection->tex2, textureList);
 					curSection->useTex2 = true;
 				}
 				else if (data[0] == "texture3")
 				{
-					createTexture(dxDevice, (char*)line.substr(8).c_str(), &curSection->tex3, textureList);
+					createTexture(dxDevice, (char*)line.substr(9).c_str(), &curSection->tex3, textureList);
 					curSection->useTex3 = true;
 				}
 				else if (data[0] == "colmod")
@@ -9280,8 +9429,14 @@ public:
 
 	bool viewEnabled;
 
+	bool useClips;
+	bool useClip[maxClips];
+	D3DXVECTOR4 clips[maxClips];
+
 	UNCRZ_view(std::string nameN)
 	{
+		zeroIsh();
+
 		name = nameN;
 
 		// loads of defaults
@@ -9310,6 +9465,15 @@ public:
 		targetSurface = targetSurfaceN;
 	}
 
+	void zeroIsh()
+	{
+		useClips = false;
+		for (int i = 0; i < maxClips; i++)
+		{
+			useClip[i] = false;
+		}
+	}
+
 	void initStencil(LPDIRECT3DSURFACE9 zSurfaceN)
 	{
 		zSurface = zSurfaceN;
@@ -9327,6 +9491,34 @@ public:
 		camDir.x /= mod;
 		camDir.y /= mod;
 		camDir.z /= mod;
+	}
+
+	bool getClipEnable(int idx)
+	{
+		return useClip[idx];
+	}
+
+	void setClipEnable(int idx, bool enable)
+	{
+		useClip[idx] = enable;
+	}
+
+	void setClip(int idx, D3DXVECTOR4* clip, bool enable)
+	{
+		clips[idx] = *clip;
+		setClipEnable(idx, enable);
+	}
+
+	void setClip(int idx, D3DXVECTOR3* nrm, float dist, bool enable)
+	{
+		clips[idx] = D3DXVECTOR4(nrm->x, nrm->y, nrm->z, dist);
+		setClipEnable(idx, enable);
+	}
+
+	void setClip(int idx, float x, float y, float z, float dist, bool enable)
+	{
+		clips[idx] = D3DXVECTOR4(x, y, z, dist);
+		setClipEnable(idx, enable);
 	}
 };
 
@@ -9435,6 +9627,7 @@ std::vector<UNCRZ_effect> effects;
 std::vector<UNCRZ_sprite*> sprites;
 std::vector<UNCRZ_model*> models;
 std::vector<UNCRZ_texture*> textures;
+std::vector<UNCRZ_matrix*> matrices;
 std::vector<UNCRZ_font*> fonts;
 std::vector<UNCRZ_FBF_anim*> anims;
 
@@ -9556,7 +9749,7 @@ void moveCameraLight(LPDIRECT3DDEVICE9, lightData*);
 void moveCameraDynamicDecal(LPDIRECT3DDEVICE9, dynamicDecalData*);
 int rnd(int);
 drawData createDrawData(float, D3DVIEWPORT9* vp);
-drawData createDrawDataView(float, D3DVIEWPORT9* vp, UNCRZ_view*);
+drawData createDrawDataView(LPDIRECT3DDEVICE9, float, D3DVIEWPORT9* vp, UNCRZ_view*);
 drawData createDrawDataOver(float, D3DVIEWPORT9* vp, UNCRZ_over*);
 D3DVIEWPORT9 createViewPort(float);
 D3DVIEWPORT9 createViewPort(UINT, UINT);
@@ -10750,13 +10943,13 @@ void handleUiAfter(uiEvent* uie)
 					
 					if (g_go == g_TM_red)
 					{
-						float leftNess = ((float)objs[g_seled]->x - 4.5f) / 18.0f;
+						float leftNess = ((float)objs[g_seled]->x - 4.5f) / 14.0f;
 						float highNess = ((float)objs[g_seled]->y - 0.0f) / 8.0f;
 						g_align(leftNess, highNess - abs(leftNess));
 					}
 					else if (g_go == g_TM_silver)
 					{
-						float leftNess = (4.5f - (float)objs[g_seled]->x) / 18.0f;
+						float leftNess = (4.5f - (float)objs[g_seled]->x) / 14.0f;
 						float highNess = (7.0f - (float)objs[g_seled]->y) / 8.0f;
 						g_align(leftNess, highNess - abs(leftNess));
 					}
@@ -11103,8 +11296,8 @@ void reload(LPDIRECT3DDEVICE9 dxDevice)
 	sprites.clear();
 	anims.clear();
 
-	loadModelsFromFile("text.uncrz", mainDxDevice, &models, &effects, &textures, &normalVis);
-	loadSpritesFromFile("textS.uncrz", mainDxDevice, &sprites, &effects, &textures);
+	loadModelsFromFile("text.uncrz", mainDxDevice, &models, &effects, &textures, &matrices, &normalVis);
+	loadSpritesFromFile("textS.uncrz", mainDxDevice, &sprites, &effects, &textures, &matrices);
 	loadAnimsFromFile("textA.uncrz", &anims, &models);
 
 	initObjs(dxDevice);
@@ -12047,8 +12240,30 @@ void initSprites(LPDIRECT3DDEVICE9 dxDevice)
 	laserSprite = sprites[0];
 }
 
-void disableClip(LPDIRECT3DDEVICE9);
-void setClip(LPDIRECT3DDEVICE9, float, bool);
+void disableClip(LPDIRECT3DDEVICE9 dxDevice)
+{
+	dxDevice->SetRenderState(D3DRS_CLIPPLANEENABLE, 0);
+	dxDevice->SetRenderState(D3DRS_CLIPPING, false);
+}
+
+void setClip(LPDIRECT3DDEVICE9 dxDevice, int idx, D3DXVECTOR4* planeCoofs)
+{
+	D3DXVECTOR4 transPlaneCoofs;
+	D3DXMATRIX viewProjInv;
+	D3DXMatrixInverse(&viewProjInv, NULL, &viewProj);
+	D3DXMatrixTranspose(&viewProjInv, &viewProjInv);
+	D3DXVec4Transform(&transPlaneCoofs, planeCoofs, &viewProjInv);
+
+	D3DXPLANE plane((const float*)&transPlaneCoofs);
+
+	dxDevice->SetClipPlane(idx, (const float*)&plane);
+}
+
+void enableClip(LPDIRECT3DDEVICE9 dxDevice, DWORD value)
+{
+	dxDevice->SetRenderState(D3DRS_CLIPPLANEENABLE, value);
+	dxDevice->SetRenderState(D3DRS_CLIPPING, true);
+}
 
 void drawZBackToFront(std::vector<UNCRZ_obj*>& objList, std::vector<int>& mol, LPDIRECT3DDEVICE9 dxDevice, drawData* ddat, DWORD drawArgs) // mutable objs list
 {
@@ -12374,11 +12589,12 @@ void drawFrame(LPDIRECT3DDEVICE9 dxDevice)
 		if (views[i]->viewEnabled)
 		{
 			moveCameraView(dxDevice, views[i]); // sets eyePos/eyeDir - needed for ddat
-			drawData viewDdat = createDrawDataView(lightCoof, &vp, views[i]);
+			drawData viewDdat = createDrawDataView(dxDevice, lightCoof, &vp, views[i]);
 			drawScene(dxDevice, &viewDdat, views[i], DF_default, SF_default); // timed
 		}
 	}
 
+	disableClip(dxDevice);
 	dxDevice->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
 
 	// drawOver
@@ -12587,7 +12803,7 @@ drawData createDrawData(float lightCoof, D3DVIEWPORT9* vp)
 	return ddat;
 }
 
-drawData createDrawDataView(float lightCoof, D3DVIEWPORT9* vp, UNCRZ_view* view)
+drawData createDrawDataView(LPDIRECT3DDEVICE9 dxDevice, float lightCoof, D3DVIEWPORT9* vp, UNCRZ_view* view)
 {
 	drawData ddat = drawData(&viewProj, &viewMatrix, &projMatrix, lights, dynamicDecals, lightCoof);
 
@@ -12619,6 +12835,25 @@ drawData createDrawDataView(float lightCoof, D3DVIEWPORT9* vp, UNCRZ_view* view)
 	ddat.genericDebugView = genericDebugView;
 	ddat.genericLabel = genericLabel;
 	ddat.genericBar = genericBar;
+
+	// clips
+	if (view->useClips)
+	{
+		DWORD clipEnable = 0;
+		for (int i = 0; i < maxClips; i++)
+		{
+			if (view->getClipEnable(i))
+			{
+				setClip(dxDevice, i, &view->clips[i]);
+				clipEnable |= (1 << i);
+			}
+		}
+		ddat.clipEnable = clipEnable;
+	}
+	else
+	{
+		ddat.clipEnable = 0;
+	}
 
 	return ddat;
 }
@@ -12686,7 +12921,7 @@ D3DVIEWPORT9 createViewPort(UINT w, UINT h)
 
 void setCloudStates(LPDIRECT3DDEVICE9 dxDevice)
 {
-	dxDevice->SetRenderState(D3DRS_CLIPPING, false); // clouds don't suffer z-ness
+	//dxDevice->SetRenderState(D3DRS_CLIPPING, false); // clouds don't suffer z-ness
 	dxDevice->SetRenderState(D3DRS_ZENABLE, false);
 	dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
 	dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, false);
@@ -12695,7 +12930,7 @@ void setCloudStates(LPDIRECT3DDEVICE9 dxDevice)
 // note that sprites do their own thing
 void setSceneStates(LPDIRECT3DDEVICE9 dxDevice)
 {
-	dxDevice->SetRenderState(D3DRS_CLIPPING, true);
+	//dxDevice->SetRenderState(D3DRS_CLIPPING, true);
 	dxDevice->SetRenderState(D3DRS_ZENABLE, true);
 	dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
 	dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, true);
@@ -12703,7 +12938,7 @@ void setSceneStates(LPDIRECT3DDEVICE9 dxDevice)
 
 void setLightStates(LPDIRECT3DDEVICE9 dxDevice)
 {
-	dxDevice->SetRenderState(D3DRS_CLIPPING, true);
+	//dxDevice->SetRenderState(D3DRS_CLIPPING, true);
 	dxDevice->SetRenderState(D3DRS_ZENABLE, true);
 	dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_CW);
 	dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, true);
@@ -12711,15 +12946,10 @@ void setLightStates(LPDIRECT3DDEVICE9 dxDevice)
 
 void setOverStates(LPDIRECT3DDEVICE9 dxDevice)
 {
-	dxDevice->SetRenderState(D3DRS_CLIPPING, false);
+	//dxDevice->SetRenderState(D3DRS_CLIPPING, false);
 	dxDevice->SetRenderState(D3DRS_ZENABLE, false);
 	dxDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
 	dxDevice->SetRenderState(D3DRS_ZWRITEENABLE, false);
-}
-
-void disableClip(LPDIRECT3DDEVICE9 dxDevice)
-{
-	dxDevice->SetRenderState(D3DRS_CLIPPING, false);
 }
 
 void setClip(LPDIRECT3DDEVICE9 dxDevice, float height, bool above)
@@ -13019,6 +13249,7 @@ void initViews(LPDIRECT3DDEVICE9 dxDevice)
 	{
 		UNCRZ_texture* tex = new UNCRZ_texture(std::string("view_") + views[i]->name, views[i]->targetTex);
 		textures.push_back(tex);
+		setMatrix(std::string("view_") + views[i]->name + "_viewproj", &views[i]->viewViewProjVP, &matrices);
 	}
 }
 

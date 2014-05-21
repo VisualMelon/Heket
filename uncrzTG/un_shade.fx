@@ -166,6 +166,8 @@ float4 colMod;
 float farDepth = 1000;
 float invFarDepth = 0.001;
 
+float4x4 mats[8]; // generic mats, use and abuse, my friends
+
 float ticker = 0;
 
 float clampPositive(float num)
