@@ -391,7 +391,7 @@ float4 calcLightModPoint(float4 lmc)
 	float targDist = (x * x + y * y + z * z);
 
 	targDist = 1.0 - targDist / (lightDepth * lightDepth);
-	clip(targDist);
+	targDist = max(targDist, 0.0);
 
 	lightMod = lightColMod * targDist;
 	return lightMod;
