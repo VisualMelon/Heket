@@ -204,6 +204,370 @@ void createTexture(LPDIRECT3DDEVICE9 dxDevice, char* fileName, LPDIRECT3DTEXTURE
 	textureList->push_back(tex);
 }
 
+const int bboxIndices[36] = {
+	0, 1, 2, // base
+	0, 2, 3,
+
+	4, 7, 6, // top
+	4, 6, 5,
+
+	0, 4, 5, // the others...
+	0, 5, 1,
+
+	1, 5, 6,
+	1, 6, 2,
+
+	2, 6, 7,
+	2, 7, 3,
+
+	3, 7, 4,
+	3, 4, 0,
+	};
+
+struct UNCRZ_bbox
+{
+public:
+	bool empty;
+	float minX, minY, minZ;
+	float maxX, maxY, maxZ;
+	D3DXVECTOR3 vecArr[8];
+
+	UNCRZ_bbox()
+	{
+		empty = true;
+	}
+
+	UNCRZ_bbox(D3DXVECTOR3 center, float xd, float yd, float zd)
+	{
+		minX = center.x - xd;
+		minY = center.y - yd;
+		minZ = center.z - zd;
+
+		maxX = center.x + xd;
+		maxY = center.y + yd;
+		maxZ = center.z + zd;
+
+		empty = false;
+	}
+
+	bool inside(D3DXVECTOR3 point)
+	{
+		if (point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY && point.z >= minZ && point.z <= maxZ)
+			return true;
+		return false;
+	}
+	
+	bool overlap(UNCRZ_bbox* bbox)
+	{
+		if (bbox->minX < maxX && bbox->maxX > minX && bbox->minY < maxY && bbox->maxY > minY && bbox->minZ < maxZ && bbox->maxZ > minZ)
+			return true;
+		return false;
+	}
+
+	bool dothSurviveClipTransformed(D3DXMATRIX* mat)
+	{
+		D3DXVECTOR4 vecsA[8];
+
+		// transform bbox
+		transformVectors(mat, &(vecsA[0]));
+
+		float w;
+		D3DXVECTOR4* curVec;
+
+		// check everything
+		for (int i = 0; i < 8; i++)
+		{
+			curVec = &(vecsA[i]);
+
+			w = curVec->w;
+			curVec->x /= w;
+			curVec->y /= w;
+			curVec->z /= w;
+			if (-1 <= curVec->x && curVec->x <= 1 && -1 <= curVec->y && curVec->y <= 1 && 0 <= curVec->z && curVec->z <= 1)
+				return true;
+		}
+
+		// check everything
+		for (int i = 0; i < 8; i++)
+		{
+			curVec = &(vecsA[i]);
+
+			w = curVec->w;
+		}
+
+		// try some other thing
+		float aminX, aminY, aminZ, amaxX, amaxY, amaxZ;
+
+		// get 2D box
+		aminX = vecsA[0].x;
+		amaxX = aminX;
+		aminY = vecsA[0].y;
+		amaxY = aminY;
+		aminZ = vecsA[0].z;
+		amaxZ = aminZ;
+		for (int i = 1; i < 8; i++)
+		{
+			if (vecsA[i].x < aminX)
+				aminX = vecsA[i].x;
+			if (vecsA[i].x > amaxX)
+				amaxX = vecsA[i].x;
+			if (vecsA[i].y < aminY)
+				aminY = vecsA[i].y;
+			if (vecsA[i].y > amaxY)
+				amaxY = vecsA[i].y;
+			if (vecsA[i].z < aminZ)
+				aminZ = vecsA[i].z;
+			if (vecsA[i].z > amaxZ)
+				amaxZ = vecsA[i].z;
+		}
+
+		if (-1 <= amaxX && aminX <= 1 && -1 <= amaxY && aminY <= 1 && 0 <= amaxZ && aminZ <= 1)
+			return true;
+		return false;
+	}
+
+	bool overlapTransformed(UNCRZ_bbox* bbox, D3DXMATRIX* mat)
+	{
+		D3DXVECTOR4 vecsA[8];
+
+		// transform bbox
+		transformVectors(mat, &(vecsA[0]));
+
+		float aminX, aminY, aminZ, amaxX, amaxY, amaxZ;
+
+		// get 2D box
+		aminX = vecsA[0].x;
+		amaxX = aminX;
+		aminY = vecsA[0].y;
+		amaxY = aminY;
+		aminZ = vecsA[0].z;
+		amaxZ = aminZ;
+		for (int i = 1; i < 8; i++)
+		{
+			if (vecsA[i].x < aminX)
+				aminX = vecsA[i].x;
+			if (vecsA[i].x > amaxX)
+				amaxX = vecsA[i].x;
+			if (vecsA[i].y < aminY)
+				aminY = vecsA[i].y;
+			if (vecsA[i].y > amaxY)
+				amaxY = vecsA[i].y;
+			if (vecsA[i].z < aminZ)
+				aminZ = vecsA[i].z;
+			if (vecsA[i].z > amaxZ)
+				amaxZ = vecsA[i].z;
+		}
+
+		if (bbox->minX < amaxX && bbox->maxX > aminX && bbox->minY < amaxY && bbox->maxY > aminY && bbox->minZ < amaxZ && bbox->maxZ > aminZ)
+			return true;
+		return false;
+	}
+
+	// overlap in x.z plane - assumes projected result is a 2D bounding box, not for precision (no surprises there)
+	bool projectedBoundsOverlap(UNCRZ_bbox* bbox, D3DXMATRIX* mat)
+	{
+		D3DXVECTOR4 vecsA[8];
+		D3DXVECTOR4 vecsB[8];
+
+		// transform bboxes
+		transformVectors(mat, &(vecsA[0]));
+		bbox->transformVectors(mat, &(vecsB[0]));
+
+		float aminX, aminZ, amaxX, amaxZ;
+		float bminX, bminZ, bmaxX, bmaxZ;
+
+		// get 2D boxes
+		aminX = vecsA[0].x;
+		amaxX = aminX;
+		aminZ = vecsA[0].z;
+		amaxZ = aminZ;
+		for (int i = 1; i < 8; i++)
+		{
+			if (vecsA[i].x < aminX)
+				aminX = vecsA[i].x;
+			if (vecsA[i].x > amaxX)
+				amaxX = vecsA[i].x;
+			if (vecsA[i].z < aminZ)
+				aminZ = vecsA[i].z;
+			if (vecsA[i].z > amaxZ)
+				amaxZ = vecsA[i].z;
+		}
+
+		bminX = vecsB[0].x;
+		bmaxX = bminX;
+		bminZ = vecsB[0].z;
+		bmaxZ = bminZ;
+		for (int i = 1; i < 8; i++)
+		{
+			if (vecsB[i].x < bminX)
+				bminX = vecsB[i].x;
+			if (vecsB[i].x > bmaxX)
+				bmaxX = vecsB[i].x;
+			if (vecsB[i].z < bminZ)
+				bminZ = vecsB[i].z;
+			if (vecsB[i].z > bmaxZ)
+				bmaxZ = vecsB[i].z;
+		}
+
+		// see if boxes overlap
+		if (bminX < amaxX && bmaxX > aminX && bminX < amaxX && bmaxX > aminX)
+			return true;
+		return false;
+	}
+
+	bool collides(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir)
+	{
+		float uRes, vRes, distRes; // not returned
+
+		D3DXVECTOR3* a;
+		D3DXVECTOR3* b;
+		D3DXVECTOR3* c;
+
+		for (int i = 0; i < 36; i += 3)
+		{
+			a = &(vecArr[bboxIndices[i]]);
+			b = &(vecArr[bboxIndices[i + 1]]);
+			c = &(vecArr[bboxIndices[i + 2]]);
+
+			if (D3DXIntersectTri(a, b, c, rayPos, rayDir, &uRes, &vRes, &distRes))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+	
+	void transformVectors(D3DXMATRIX* mat, D3DXVECTOR4* vecs)
+	{
+		D3DXVec3TransformArray(vecs, sizeof(D3DXVECTOR4), &(vecArr[0]), sizeof(D3DXVECTOR3), mat, 8);
+		//for (int i = 0; i < 8; i++)
+		//{
+		//	D3DXVec3Transform(&(vecs[i]), &(vecArr[i]), mat);
+		//}
+	}
+
+	void fillVectors()
+	{
+		// boottom
+		vecArr[0].x = minX;
+		vecArr[0].y = minY;
+		vecArr[0].z = minZ;
+
+		vecArr[1].x = maxX;
+		vecArr[1].y = minY;
+		vecArr[1].z = minZ;
+		
+		vecArr[2].x = maxX;
+		vecArr[2].y = maxY;
+		vecArr[2].z = minZ;
+
+		vecArr[3].x = minX;
+		vecArr[3].y = maxY;
+		vecArr[3].z = minZ;
+		
+		// top
+		vecArr[4].x = minX;
+		vecArr[4].y = minY;
+		vecArr[4].z = maxZ;
+
+		vecArr[5].x = maxX;
+		vecArr[5].y = minY;
+		vecArr[5].z = maxZ;
+		
+		vecArr[6].x = maxX;
+		vecArr[6].y = maxY;
+		vecArr[6].z = maxZ;
+
+		vecArr[7].x = minX;
+		vecArr[7].y = maxY;
+		vecArr[7].z = maxZ;
+	}
+
+	void include(UNCRZ_bbox* bbox, D3DXMATRIX* mat)
+	{
+		D3DXVECTOR4 vecs[8];
+		D3DXVECTOR4 curVec;
+		
+		if (bbox->empty)
+		{
+			return;
+		}
+
+		bbox->transformVectors(mat, &(vecs[0]));
+
+		for (int i = 0; i < 8; i++)
+		{
+			curVec = vecs[i];
+			include(D3DXVECTOR3(curVec.x, curVec.y, curVec.z));
+		}
+	}
+
+	void include(UNCRZ_bbox* bbox)
+	{
+		if (empty)
+		{
+			minX = bbox->minX;
+			minY = bbox->minY;
+			minZ = bbox->minZ;
+
+			maxX = bbox->maxX;
+			maxY = bbox->maxY;
+			maxZ = bbox->maxZ;
+
+			empty = false;
+		}
+		else
+		{
+			if (bbox->minX < minX)
+				minX = bbox->minX;
+			if (bbox->minY < minY)
+				minY = bbox->minY;
+			if (bbox->minZ < minZ)
+				minZ = bbox->minZ;
+
+			if (bbox->maxX > maxX)
+				maxX = bbox->maxX;
+			if (bbox->maxY > maxY)
+				maxY = bbox->maxY;
+			if (bbox->maxZ > maxZ)
+				maxZ = bbox->maxZ;
+		}
+	}
+
+	void include(D3DXVECTOR3 vec)
+	{
+		if (empty)
+		{
+			minX = vec.x;
+			minY = vec.y;
+			minZ = vec.z;
+
+			maxX = vec.x;
+			maxY = vec.y;
+			maxZ = vec.z;
+
+			empty = false;
+		}
+		else
+		{
+			if (vec.x < minX)
+				minX = vec.x;
+			if (vec.y < minY)
+				minY = vec.y;
+			if (vec.z < minZ)
+				minZ = vec.z;
+
+			if (vec.x > maxX)
+				maxX = vec.x;
+			if (vec.y > maxY)
+				maxY = vec.y;
+			if (vec.z > maxZ)
+				maxZ = vec.z;
+		}
+	}
+};
+
 struct lightData
 {
 public:
@@ -238,6 +602,10 @@ public:
 
 	bool useLightMap; // should be disabled for LT_point!
 
+	UNCRZ_bbox lightBox;
+	bool allowSkip; // allow stuff to skip this light if the light thinks it won't shine on them
+	bool curDrawSkip;
+
 	lightData(std::string nameN)
 	{
 		name = nameN;
@@ -259,6 +627,29 @@ public:
 
 		texWidth = w;
 		texHeight = h;
+	}
+
+	void updateBox()
+	{
+		if (lightType == LT_point)
+		{
+			lightBox = UNCRZ_bbox((D3DXVECTOR3)lightPos, lightDepth, lightDepth, lightDepth);
+		}
+		else
+		{
+			lightBox = UNCRZ_bbox(); // empty
+		}
+	}
+
+	bool canSkip(UNCRZ_bbox* bbox)
+	{
+		if (!allowSkip)
+			return false;
+
+		if (lightBox.empty == false && !lightBox.overlap(bbox))
+			return true;
+
+		return false;
 	}
 
 	void release()
@@ -310,8 +701,6 @@ public:
 		// implement
 	}
 };
-
-struct UNCRZ_bbox;
 
 struct uiItem;
 struct uiTexItem;
@@ -933,357 +1322,6 @@ void UNCRZ_decal::destroy()
 {
 	delete[numFaces * 3 * sizeof(vertexPCT)] vertexArray;
 }
-
-const int bboxIndices[36] = {
-	0, 1, 2, // base
-	0, 2, 3,
-
-	4, 7, 6, // top
-	4, 6, 5,
-
-	0, 4, 5, // the others...
-	0, 5, 1,
-
-	1, 5, 6,
-	1, 6, 2,
-
-	2, 6, 7,
-	2, 7, 3,
-
-	3, 7, 4,
-	3, 4, 0,
-	};
-
-struct UNCRZ_bbox
-{
-public:
-	bool empty;
-	float minX, minY, minZ;
-	float maxX, maxY, maxZ;
-	D3DXVECTOR3 vecArr[8];
-
-	UNCRZ_bbox()
-	{
-		empty = true;
-	}
-
-	bool inside(D3DXVECTOR3 point)
-	{
-		if (point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY && point.z >= minZ && point.z <= maxZ)
-			return true;
-		return false;
-	}
-	
-	bool overlap(UNCRZ_bbox* bbox)
-	{
-		if (bbox->minX < maxX && bbox->maxX > minX && bbox->minY < maxY && bbox->maxY > minY && bbox->minZ < maxZ && bbox->maxZ > minZ)
-			return true;
-		return false;
-	}
-
-	bool dothSurviveClipTransformed(D3DXMATRIX* mat)
-	{
-		D3DXVECTOR4 vecsA[8];
-
-		// transform bbox
-		transformVectors(mat, &(vecsA[0]));
-
-		float w;
-		D3DXVECTOR4* curVec;
-
-		// check everything
-		for (int i = 0; i < 8; i++)
-		{
-			curVec = &(vecsA[i]);
-
-			w = curVec->w;
-			curVec->x /= w;
-			curVec->y /= w;
-			curVec->z /= w;
-			if (-1 <= curVec->x && curVec->x <= 1 && -1 <= curVec->y && curVec->y <= 1 && 0 <= curVec->z && curVec->z <= 1)
-				return true;
-		}
-
-		// check everything
-		for (int i = 0; i < 8; i++)
-		{
-			curVec = &(vecsA[i]);
-
-			w = curVec->w;
-		}
-
-		// try some other thing
-		float aminX, aminY, aminZ, amaxX, amaxY, amaxZ;
-
-		// get 2D box
-		aminX = vecsA[0].x;
-		amaxX = aminX;
-		aminY = vecsA[0].y;
-		amaxY = aminY;
-		aminZ = vecsA[0].z;
-		amaxZ = aminZ;
-		for (int i = 1; i < 8; i++)
-		{
-			if (vecsA[i].x < aminX)
-				aminX = vecsA[i].x;
-			if (vecsA[i].x > amaxX)
-				amaxX = vecsA[i].x;
-			if (vecsA[i].y < aminY)
-				aminY = vecsA[i].y;
-			if (vecsA[i].y > amaxY)
-				amaxY = vecsA[i].y;
-			if (vecsA[i].z < aminZ)
-				aminZ = vecsA[i].z;
-			if (vecsA[i].z > amaxZ)
-				amaxZ = vecsA[i].z;
-		}
-
-		if (-1 <= amaxX && aminX <= 1 && -1 <= amaxY && aminY <= 1 && 0 <= amaxZ && aminZ <= 1)
-			return true;
-		return false;
-	}
-
-	bool overlapTransformed(UNCRZ_bbox* bbox, D3DXMATRIX* mat)
-	{
-		D3DXVECTOR4 vecsA[8];
-
-		// transform bbox
-		transformVectors(mat, &(vecsA[0]));
-
-		float aminX, aminY, aminZ, amaxX, amaxY, amaxZ;
-
-		// get 2D box
-		aminX = vecsA[0].x;
-		amaxX = aminX;
-		aminY = vecsA[0].y;
-		amaxY = aminY;
-		aminZ = vecsA[0].z;
-		amaxZ = aminZ;
-		for (int i = 1; i < 8; i++)
-		{
-			if (vecsA[i].x < aminX)
-				aminX = vecsA[i].x;
-			if (vecsA[i].x > amaxX)
-				amaxX = vecsA[i].x;
-			if (vecsA[i].y < aminY)
-				aminY = vecsA[i].y;
-			if (vecsA[i].y > amaxY)
-				amaxY = vecsA[i].y;
-			if (vecsA[i].z < aminZ)
-				aminZ = vecsA[i].z;
-			if (vecsA[i].z > amaxZ)
-				amaxZ = vecsA[i].z;
-		}
-
-		if (bbox->minX < amaxX && bbox->maxX > aminX && bbox->minY < amaxY && bbox->maxY > aminY && bbox->minZ < amaxZ && bbox->maxZ > aminZ)
-			return true;
-		return false;
-	}
-
-	// overlap in x.z plane - assumes projected result is a 2D bounding box, not for precision (no surprises there)
-	bool projectedBoundsOverlap(UNCRZ_bbox* bbox, D3DXMATRIX* mat)
-	{
-		D3DXVECTOR4 vecsA[8];
-		D3DXVECTOR4 vecsB[8];
-
-		// transform bboxes
-		transformVectors(mat, &(vecsA[0]));
-		bbox->transformVectors(mat, &(vecsB[0]));
-
-		float aminX, aminZ, amaxX, amaxZ;
-		float bminX, bminZ, bmaxX, bmaxZ;
-
-		// get 2D boxes
-		aminX = vecsA[0].x;
-		amaxX = aminX;
-		aminZ = vecsA[0].z;
-		amaxZ = aminZ;
-		for (int i = 1; i < 8; i++)
-		{
-			if (vecsA[i].x < aminX)
-				aminX = vecsA[i].x;
-			if (vecsA[i].x > amaxX)
-				amaxX = vecsA[i].x;
-			if (vecsA[i].z < aminZ)
-				aminZ = vecsA[i].z;
-			if (vecsA[i].z > amaxZ)
-				amaxZ = vecsA[i].z;
-		}
-
-		bminX = vecsB[0].x;
-		bmaxX = bminX;
-		bminZ = vecsB[0].z;
-		bmaxZ = bminZ;
-		for (int i = 1; i < 8; i++)
-		{
-			if (vecsB[i].x < bminX)
-				bminX = vecsB[i].x;
-			if (vecsB[i].x > bmaxX)
-				bmaxX = vecsB[i].x;
-			if (vecsB[i].z < bminZ)
-				bminZ = vecsB[i].z;
-			if (vecsB[i].z > bmaxZ)
-				bmaxZ = vecsB[i].z;
-		}
-
-		// see if boxes overlap
-		if (bminX < amaxX && bmaxX > aminX && bminX < amaxX && bmaxX > aminX)
-			return true;
-		return false;
-	}
-
-	bool collides(D3DXVECTOR3* rayPos, D3DXVECTOR3* rayDir)
-	{
-		float uRes, vRes, distRes; // not returned
-
-		D3DXVECTOR3* a;
-		D3DXVECTOR3* b;
-		D3DXVECTOR3* c;
-
-		for (int i = 0; i < 36; i += 3)
-		{
-			a = &(vecArr[bboxIndices[i]]);
-			b = &(vecArr[bboxIndices[i + 1]]);
-			c = &(vecArr[bboxIndices[i + 2]]);
-
-			if (D3DXIntersectTri(a, b, c, rayPos, rayDir, &uRes, &vRes, &distRes))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-	
-	void transformVectors(D3DXMATRIX* mat, D3DXVECTOR4* vecs)
-	{
-		D3DXVec3TransformArray(vecs, sizeof(D3DXVECTOR4), &(vecArr[0]), sizeof(D3DXVECTOR3), mat, 8);
-		//for (int i = 0; i < 8; i++)
-		//{
-		//	D3DXVec3Transform(&(vecs[i]), &(vecArr[i]), mat);
-		//}
-	}
-
-	void fillVectors()
-	{
-		// boottom
-		vecArr[0].x = minX;
-		vecArr[0].y = minY;
-		vecArr[0].z = minZ;
-
-		vecArr[1].x = maxX;
-		vecArr[1].y = minY;
-		vecArr[1].z = minZ;
-		
-		vecArr[2].x = maxX;
-		vecArr[2].y = maxY;
-		vecArr[2].z = minZ;
-
-		vecArr[3].x = minX;
-		vecArr[3].y = maxY;
-		vecArr[3].z = minZ;
-		
-		// top
-		vecArr[4].x = minX;
-		vecArr[4].y = minY;
-		vecArr[4].z = maxZ;
-
-		vecArr[5].x = maxX;
-		vecArr[5].y = minY;
-		vecArr[5].z = maxZ;
-		
-		vecArr[6].x = maxX;
-		vecArr[6].y = maxY;
-		vecArr[6].z = maxZ;
-
-		vecArr[7].x = minX;
-		vecArr[7].y = maxY;
-		vecArr[7].z = maxZ;
-	}
-
-	void include(UNCRZ_bbox* bbox, D3DXMATRIX* mat)
-	{
-		D3DXVECTOR4 vecs[8];
-		D3DXVECTOR4 curVec;
-		
-		if (bbox->empty)
-		{
-			return;
-		}
-
-		bbox->transformVectors(mat, &(vecs[0]));
-
-		for (int i = 0; i < 8; i++)
-		{
-			curVec = vecs[i];
-			include(D3DXVECTOR3(curVec.x, curVec.y, curVec.z));
-		}
-	}
-
-	void include(UNCRZ_bbox* bbox)
-	{
-		if (empty)
-		{
-			minX = bbox->minX;
-			minY = bbox->minY;
-			minZ = bbox->minZ;
-
-			maxX = bbox->maxX;
-			maxY = bbox->maxY;
-			maxZ = bbox->maxZ;
-
-			empty = false;
-		}
-		else
-		{
-			if (bbox->minX < minX)
-				minX = bbox->minX;
-			if (bbox->minY < minY)
-				minY = bbox->minY;
-			if (bbox->minZ < minZ)
-				minZ = bbox->minZ;
-
-			if (bbox->maxX > maxX)
-				maxX = bbox->maxX;
-			if (bbox->maxY > maxY)
-				maxY = bbox->maxY;
-			if (bbox->maxZ > maxZ)
-				maxZ = bbox->maxZ;
-		}
-	}
-
-	void include(D3DXVECTOR3 vec)
-	{
-		if (empty)
-		{
-			minX = vec.x;
-			minY = vec.y;
-			minZ = vec.z;
-
-			maxX = vec.x;
-			maxY = vec.y;
-			maxZ = vec.z;
-
-			empty = false;
-		}
-		else
-		{
-			if (vec.x < minX)
-				minX = vec.x;
-			if (vec.y < minY)
-				minY = vec.y;
-			if (vec.z < minZ)
-				minZ = vec.z;
-
-			if (vec.x > maxX)
-				maxX = vec.x;
-			if (vec.y > maxY)
-				maxY = vec.y;
-			if (vec.z > maxZ)
-				maxZ = vec.z;
-		}
-	}
-};
 
 const DWORD LF_lit = 0x00000001; // uses multi-pass lighting to be pretty
 const DWORD LF_shadows = 0x00000002; // rendered onto light maps
@@ -2149,7 +2187,7 @@ skipPlainPass:
 				effect.effect->BeginPass((int)ld->lightType + 1);
 				for (int i = count - 1; i >= 0; i--)
 				{
-					if (arr[i]->sections[secIndex]->curDrawCull)
+					if (arr[i]->sections[secIndex]->curDrawCull || ld->canSkip(&arr[i]->modelBox))
 						continue;
 					if (vertexType == VX_PC || vertexType == VX_PCT)
 						effect.setcolMod(&arr[i]->sections[secIndex]->colMod.x);
@@ -2491,7 +2529,7 @@ skipPlainPass:
 			{
 				lightData* ld = ddat->lightDatas[ldi];
 				
-				if (!ld->lightEnabled)
+				if (!ld->lightEnabled || ld->curDrawSkip)
 					continue;
 
 				effect.setLightData(ld);
@@ -3406,6 +3444,11 @@ notOcced:
 	//dxDevice->SetVertexDeclaration(vertexDec);
 	//dxDevice->SetStreamSource(0, vBuff, 0, stride);
 	//dxDevice->SetIndices(iBuff);
+
+	for (int i = ddat->lightDatas.size() - 1; i >= 0; i--)
+	{
+		ddat->lightDatas[i]->curDrawSkip = ddat->lightDatas[i]->canSkip(&modelBox);
+	}
 
 	int len = sections.size();
 	for (int i = len - 1; i >= 0; i--)
